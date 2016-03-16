@@ -8,8 +8,10 @@
 #endif
 
 #include <assert.h>
+#include <float.h>
 #include <math.h>
 #include <stdio.h>
+#include <vector>
 
 #if !defined(M_PI)
 #	define M_PI 3.14159265358979323846
@@ -50,18 +52,86 @@ public:
 	float3 vertical;
 };
 
-bool intersectRaySphere(float3 center, float radius, Ray r, float *hitT)
+struct HitRecord
 {
-	float3 oc = r.origin - center;
-	float a = dot(r.dir, r.dir);
-	float b = 2.0f * dot(oc, r.dir);
-	float c = dot(oc, oc) - radius*radius;
-	float discriminant = b*b - 4*a*c;
-	if (discriminant < 0)
+	float t;
+	float3 pos;
+	float3 normal;
+};
+
+class Hittee
+{
+public:
+	virtual bool CDSF3_VECTORCALL hit(const Ray ray, float tMin, float tMax, HitRecord *outRecord) const = 0;
+};
+
+class HitteeList : public Hittee
+{
+public:
+	HitteeList() {}
+	explicit HitteeList(std::vector<Hittee*> &hittees) : list(std::move(hittees)) {}
+	virtual bool CDSF3_VECTORCALL hit(const Ray ray, float tMin, float tMax, HitRecord *outRecord) const
+	{
+		HitRecord hitRecord;
+		bool hitSomething = false;
+		float closestSoFar = FLT_MAX;
+		for(auto itor = list.begin(); itor != list.end(); ++itor)
+		{
+			if ((*itor)->hit(ray, tMin, closestSoFar, &hitRecord))
+			{
+				hitSomething = true;
+				closestSoFar = hitRecord.t;
+			}
+		}
+		if (hitSomething)
+		{
+			*outRecord = hitRecord;
+		}
+		return hitSomething;
+	}
+
+	std::vector<Hittee*> list;
+};
+
+class Sphere : public Hittee
+{
+public:
+	Sphere() {}
+	explicit Sphere(float3 center, float radius) : center(center), radius(radius) {}
+	virtual bool CDSF3_VECTORCALL hit(const Ray ray, float tMin, float tMax, HitRecord *outRecord) const
+	{
+		float3 oc = ray.origin - center;
+		float a = dot(ray.dir, ray.dir);
+		float b = 2.0f * dot(oc, ray.dir);
+		float c = dot(oc, oc) - radius*radius;
+		float discriminant = b*b - 4*a*c;
+		if (discriminant > 0)
+		{
+			float temp = sqrtf(discriminant);
+			float t0 = (-b - temp) / (2.0f*a);
+			if (tMin <= t0 && t0 <= tMax)
+			{
+				outRecord->t = t0;
+				outRecord->pos = ray.eval(t0);
+				outRecord->normal = (outRecord->pos - center) / radius;
+				return true;
+			}
+			float t1 = (-b + temp) / (2.0f*a);
+			if (tMin <= t1 && t1 <= tMax)
+			{
+				outRecord->t = t1;
+				outRecord->pos = ray.eval(t1);
+				outRecord->normal = (outRecord->pos - center) / radius;
+				return true;
+			}
+		}
 		return false;
-	*hitT = (-b - sqrtf(discriminant)) / 2.0f*a;
-	return true;
-}
+	}
+
+	float3 center;
+	float radius;
+};
+
 
 bool CDSF3_VECTORCALL intersectRayBox(float3 rayOrg, float3 invDir, float3 bbmin, float3 bbmax, float &hitT)
 {
@@ -80,7 +150,12 @@ bool CDSF3_VECTORCALL intersectRayBox(float3 rayOrg, float3 invDir, float3 bbmin
     return hit;
 }
 
-const char *filenameSuffix(const char *filename)
+float3 CDSF3_VECTORCALL hitColor(const HitRecord &hit)
+{
+	return (hit.normal+float3(1,1,1)) * 0.5f;
+}
+
+static const char *filenameSuffix(const char *filename)
 {	
 	const char *suffix = filename + strlen(filename) - 1;
 	while(suffix != filename)
@@ -113,16 +188,21 @@ int __cdecl main(int argc, char *argv[])
 	const int kOutputWidth  = 800;
 	const int kOutputHeight = 600;
 
+	HitteeList hittees( std::vector<Hittee*>{
+		new Sphere( float3(0.0f, 0.5f, 0.0f), 0.5f ),
+		new Sphere( float3(0.0f, -100, 00.0f), 100.0f ),
+	});
+
 	const float aspectRatio = (float)kOutputWidth / (float)kOutputHeight;
-	const float3 camPos    = float3( 0, 0, 0);
-	const float3 camTarget = sphere.center;
+	const float3 camPos    = float3( 0, 1, 5);
+	const float3 camTarget = float3(0,0,0);
 	const float3 camUp     = float3( 0, 1, 0);
 	Camera camera(camPos, camTarget, camUp, 45.0f, aspectRatio);
+
 	float *outputPixels = new float[kOutputWidth * kOutputHeight * 4];
 
 	LARGE_INTEGER startTime, endTime, timerFreq;
 	QueryPerformanceFrequency(&timerFreq);
-
 	QueryPerformanceCounter(&startTime);
 	for(int iY=0; iY<kOutputHeight; iY+=1)
 	{
@@ -130,22 +210,20 @@ int __cdecl main(int argc, char *argv[])
 		{
 			float u = float(iX) / float(kOutputWidth-1);
 			float v = 1.0f - float(iY) / float(kOutputHeight-1);
-			Ray r = camera.ray(u,v);
+			Ray ray = camera.ray(u,v);
 			float3 color(0,0,0);
 
-			float3 sphereCenter = float3(0, 0.5f, -5);
-			float sphereRadius = 0.3f;
-			float sphereHitT = 0;
-			if (intersectRaySphere(sphereCenter, sphereRadius, r, &sphereHitT))
+			HitRecord hit;
+			if (hittees.hit(ray, 0, FLT_MAX, &hit))
 			{
-				float3 normal = normalize(r.eval(sphereHitT) - sphereCenter);
-				color = (normal+float3(1,1,1)) * 0.5f;
+				color = hitColor(hit);
 			}
 			else
 			{
-				float3 unitDir = normalize(r.dir);
+				// background color
+				float3 unitDir = normalize(ray.dir);
 				float t = 0.5f * (unitDir.y() + 1.0f);
-				color = lerp( float3(1,1,1), float3(0,0,0), t);
+				color = lerp( float3(1,1,1), float3(0.5, 0.7, 1.0), t);
 			}
 
 			float *out = outputPixels + 4*(kOutputWidth*iY + iX);
