@@ -114,10 +114,10 @@ int __cdecl main(int argc, char *argv[])
 	const int kOutputHeight = 600;
 
 	const float aspectRatio = (float)kOutputWidth / (float)kOutputHeight;
-	const float3 camPos = float3( 0, 0, 0);
-	const float3 camDir = float3( 0, 0,-1);
-	const float3 camUp  = float3( 0, 1, 0);
-	Camera camera(camPos, camDir, camUp, 45.0f, aspectRatio);
+	const float3 camPos    = float3( 0, 0, 0);
+	const float3 camTarget = sphere.center;
+	const float3 camUp     = float3( 0, 1, 0);
+	Camera camera(camPos, camTarget, camUp, 45.0f, aspectRatio);
 	float *outputPixels = new float[kOutputWidth * kOutputHeight * 4];
 
 	LARGE_INTEGER startTime, endTime, timerFreq;
