@@ -31,7 +31,7 @@ struct float3
 	CDSF3_INLINE float3 CDSF3_VECTORCALL yzx() const { return CDSF3_SHUFFLE(*this, 1, 2, 0); }
 	CDSF3_INLINE float3 CDSF3_VECTORCALL zxy() const { return CDSF3_SHUFFLE(*this, 2, 0, 1); }
 
-	CDSF3_INLINE void CDSF3_VECTORCALL store(float *p) { p[0] = x(); p[1] = z(); p[2] = z(); }
+	CDSF3_INLINE void CDSF3_VECTORCALL store(float *p) { p[0] = x(); p[1] = y(); p[2] = z(); }
 
 	// Single-element setters. Avoid these if possible; creating new vectors is usually preferable.
 	void CDSF3_VECTORCALL setX(float x)
