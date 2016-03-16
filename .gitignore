@@ -1,0 +1,27 @@
+build/*
+
+# TEMP, until I switch to cmake or something
+!build/*.vcxproj
+!build/*.sln
+
+*.obj
+*.htm
+*.manifest*
+*.pch
+*.dep
+*.idb
+*.pdb
+*.ncb
+*.suo
+*.user
+*.ilk
+*.exe
+*.opensdf
+*.sdf
+*.tlog
+*.log
+*_manifest.rc
+*.lastbuildstate
+*.unsuccessfulbuild
+*.ipch
+*.cache
