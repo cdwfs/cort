@@ -245,11 +245,12 @@ int __cdecl main(int argc, char *argv[])
 		{
 			float3 color = float3(outputPixels + 4*i);
 			color = clamp(color, float3(0,0,0), float3(1,1,1));
+			color = float3( sqrtf(color.x()), sqrtf(color.y()), sqrtf(color.z()) ); // gamma-"correct" with gamma=2.0
 			normalizedPixels[i] =
-				( uint8_t(255.0f*color.r()) <<  0 ) |
-				( uint8_t(255.0f*color.g()) <<  8 ) |
-				( uint8_t(255.0f*color.b()) << 16 ) |
-				( 0xFF                      << 24 );
+				( uint8_t(255.99f*color.r()) <<  0 ) |
+				( uint8_t(255.99f*color.g()) <<  8 ) |
+				( uint8_t(255.99f*color.b()) << 16 ) |
+				( 0xFF                       << 24 );
 		}
 		if (strncmp(outputFilenameSuffix, "bmp", 3) == 0)
 			imageWriteSuccess = stbi_write_bmp(outputFilename, kOutputWidth, kOutputHeight, 4, normalizedPixels);
