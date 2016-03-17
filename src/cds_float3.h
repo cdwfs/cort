@@ -131,3 +131,4 @@ CDSF3_INLINE float  CDSF3_VECTORCALL length(float3 v) { return sqrtf(dot(v,v)); 
 CDSF3_INLINE float  CDSF3_VECTORCALL lengthSq(float3 v) { return dot(v,v); }
 CDSF3_INLINE float3 CDSF3_VECTORCALL normalize(float3 v) { return v / length(v); }
 CDSF3_INLINE float3 CDSF3_VECTORCALL lerp(float3 a, float3 b, float t) { return a + (b-a)*t; }
+CDSF3_INLINE float3 CDSF3_VECTORCALL reflect(float3 v, float3 n) { return v - 2*dot(v,n)*n; }

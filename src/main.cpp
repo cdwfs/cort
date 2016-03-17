@@ -19,6 +19,19 @@
 #	define M_PI 3.14159265358979323846
 #endif
 
+static float3 CDSF3_VECTORCALL randomInUnitSphere(void)
+{
+	 // TODO(cort): replace with deterministic algorithm, like octohedron mapping
+	static std::default_random_engine randomGen((unsigned long)std::chrono::high_resolution_clock::now().time_since_epoch().count()); // TODO(cort): seed correctness
+	static std::uniform_real_distribution<float> birandom(-1.0f, 1.0f);
+	float3 p;
+	do
+	{
+		p = float3( birandom(randomGen), birandom(randomGen), birandom(randomGen) );
+	} while(lengthSq(p) >= 1.0f);
+	return p;
+}
+
 struct Ray
 {
 	Ray() {}
@@ -54,11 +67,13 @@ public:
 	float3 vertical;
 };
 
+class Material;
 struct HitRecord
 {
 	float t;
 	float3 pos;
 	float3 normal;
+	const Material *pMaterial;
 };
 
 class Hittee
@@ -95,11 +110,49 @@ public:
 	std::vector<Hittee*> list;
 };
 
+class Material
+{
+public:
+	//! Determines whether a ray should be scattered from the specified input ray and hit record. If so, output the scattered ray and attenuation factor.
+	virtual bool CDSF3_VECTORCALL scatter(const Ray rayIn, const HitRecord &hit, float3 *outAttenuation, Ray *outRay) const = 0;
+};
+
+class LambertianMaterial : public Material
+{
+public:
+	explicit LambertianMaterial(float3 albedo) : albedo(albedo) {}
+	bool CDSF3_VECTORCALL scatter(const Ray rayIn, const HitRecord &hit, float3 *outAttenuation, Ray *outRay) const override
+	{
+		// scatter towards a random point in the unit sphere above the hit point
+		float3 target = hit.pos + hit.normal + randomInUnitSphere();
+		*outRay = Ray(hit.pos, target-hit.pos);
+		*outAttenuation = albedo;
+		return true;
+	}
+
+	float3 albedo;
+};
+
+class MetalMaterial : public Material
+{
+public:
+	explicit MetalMaterial(float3 albedo) : albedo(albedo) {}
+	bool CDSF3_VECTORCALL scatter(const Ray rayIn, const HitRecord &hit, float3 *outAttenuation, Ray *outRay) const override
+	{
+		// scatter towards a random point in the unit sphere above the hit point
+		float3 reflectDir = reflect(normalize(rayIn.dir), hit.normal);
+		*outRay = Ray(hit.pos, reflectDir);
+		*outAttenuation = albedo;
+		return true;
+	}
+	float3 albedo;
+};
+
 class Sphere : public Hittee
 {
 public:
 	Sphere() {}
-	explicit Sphere(float3 center, float radius) : center(center), radius(radius) {}
+	explicit Sphere(float3 center, float radius, const Material *material) : center(center), radius(radius), material(material) {}
 	virtual bool CDSF3_VECTORCALL hit(const Ray ray, float tMin, float tMax, HitRecord *outRecord) const
 	{
 		float3 oc = ray.origin - center;
@@ -116,6 +169,7 @@ public:
 				outRecord->t = t0;
 				outRecord->pos = ray.eval(t0);
 				outRecord->normal = (outRecord->pos - center) / radius;
+				outRecord->pMaterial = material;
 				return true;
 			}
 			float t1 = (-b + temp) / a;
@@ -124,6 +178,7 @@ public:
 				outRecord->t = t1;
 				outRecord->pos = ray.eval(t1);
 				outRecord->normal = (outRecord->pos - center) / radius;
+				outRecord->pMaterial = material;
 				return true;
 			}
 		}
@@ -132,6 +187,7 @@ public:
 
 	float3 center;
 	float radius;
+	const Material *material;
 };
 
 
@@ -152,30 +208,22 @@ bool CDSF3_VECTORCALL intersectRayBox(float3 rayOrg, float3 invDir, float3 bbmin
     return hit;
 }
 
-float3 CDSF3_VECTORCALL randomInUnitSphere(void)
-{
-	 // TODO(cort): replace with deterministic algorithm, like octohedron mapping
-	static std::default_random_engine randomGen((unsigned long)std::chrono::high_resolution_clock::now().time_since_epoch().count()); // TODO(cort): seed correctness
-	static std::uniform_real_distribution<float> birandom(-1.0f, 1.0f);
-	float3 p;
-	do
-	{
-		p = float3( birandom(randomGen), birandom(randomGen), birandom(randomGen) );
-	} while(lengthSq(p) >= 1.0f);
-	return p;
-}
-
 float3 CDSF3_VECTORCALL rayColor(const Ray ray, HitteeList &world, int depth = 0)
 {
-	if (depth >= 50)
-		return float3(0,0,0);
+	const int kMaxScatterDepth = 50;
 	HitRecord hit;
-	if (world.hit(ray, FLT_EPSILON, FLT_MAX, &hit))
+	if (world.hit(ray, 0.001f, FLT_MAX, &hit)) // TODO(cort): proper epsilon
 	{
-		// diffuse: shoot a reflection ray through a random point in the unit sphere above the hit point.
-		float3 target = hit.pos + hit.normal + randomInUnitSphere();
-		const float attenuation = 0.5f;
-		return attenuation * rayColor( Ray(hit.pos, target-hit.pos), world, depth+1 );
+		Ray scatterRay;
+		float3 scatterAttenuation;
+		if (depth < kMaxScatterDepth && hit.pMaterial->scatter(ray, hit, &scatterAttenuation, &scatterRay))
+		{
+			return scatterAttenuation * rayColor(scatterRay, world, depth+1);
+		}
+		else
+		{
+			return float3(0,0,0);
+		}
 	}
 	else
 	{
@@ -231,9 +279,15 @@ int __cdecl main(int argc, char *argv[])
 	std::uniform_real_distribution<float> randomPixelOffsetX(-1.0f/(float)kOutputWidth,  1.0f/(float)kOutputWidth);
 	std::uniform_real_distribution<float> randomPixelOffsetY(-1.0f/(float)kOutputHeight, 1.0f/(float)kOutputHeight);
 
+	LambertianMaterial yellowLambert(float3(1,1,0.0));
+	LambertianMaterial greenLambert(float3(0.3, 0.8, 0.3));
+	MetalMaterial copperMetal(float3(0.8549f, 0.5412f, 0.4039f));
+	MetalMaterial silverMetal(float3(0.9,0.9,0.9));
 	HitteeList hittees( std::vector<Hittee*>{
-		new Sphere( float3(0.0f, 0.5f, 0.0f), 0.5f ),
-		new Sphere( float3(0.0f, -100, 00.0f), 100.0f ),
+		new Sphere( float3(0.0f, -100, 00.0f), 100.0f, &greenLambert ),
+		new Sphere( float3(0.0f, 0.5f, 0.0f), 0.5f, &yellowLambert ),
+		new Sphere( float3(-1.0f, 0.5f, 0.0f), 0.5f, &copperMetal ),
+		new Sphere( float3( 1.0f, 0.5f, 0.0f), 0.5f, &silverMetal ),
 	});
 
 	const float aspectRatio = (float)kOutputWidth / (float)kOutputHeight;
