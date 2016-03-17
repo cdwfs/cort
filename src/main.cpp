@@ -102,13 +102,13 @@ public:
 	{
 		float3 oc = ray.origin - center;
 		float a = dot(ray.dir, ray.dir);
-		float b = 2.0f * dot(oc, ray.dir);
+		float b = dot(oc, ray.dir);
 		float c = dot(oc, oc) - radius*radius;
-		float discriminant = b*b - 4*a*c;
+		float discriminant = b*b - a*c;
 		if (discriminant > 0)
 		{
 			float temp = sqrtf(discriminant);
-			float t0 = (-b - temp) / (2.0f*a);
+			float t0 = (-b - temp) / a;
 			if (tMin <= t0 && t0 <= tMax)
 			{
 				outRecord->t = t0;
@@ -116,7 +116,7 @@ public:
 				outRecord->normal = (outRecord->pos - center) / radius;
 				return true;
 			}
-			float t1 = (-b + temp) / (2.0f*a);
+			float t1 = (-b + temp) / a;
 			if (tMin <= t1 && t1 <= tMax)
 			{
 				outRecord->t = t1;
