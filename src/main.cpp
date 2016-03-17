@@ -19,6 +19,11 @@
 #	define M_PI 3.14159265358979323846
 #endif
 
+static inline float clamp(float x, float a, float b)
+{
+	return (x<a) ? a : (x>b ? b : x);
+}
+
 static float3 CDSF3_VECTORCALL randomInUnitSphere(void)
 {
 	 // TODO(cort): replace with deterministic algorithm, like octohedron mapping
@@ -136,16 +141,16 @@ public:
 class MetalMaterial : public Material
 {
 public:
-	explicit MetalMaterial(float3 albedo) : albedo(albedo) {}
+	explicit MetalMaterial(float3 albedo, float roughness) : albedo(albedo), roughness(clamp(roughness,0.0f,1.0f)) {}
 	bool CDSF3_VECTORCALL scatter(const Ray rayIn, const HitRecord &hit, float3 *outAttenuation, Ray *outRay) const override
 	{
-		// scatter towards a random point in the unit sphere above the hit point
 		float3 reflectDir = reflect(normalize(rayIn.dir), hit.normal);
-		*outRay = Ray(hit.pos, reflectDir);
+		*outRay = Ray(hit.pos, reflectDir + roughness*randomInUnitSphere());
 		*outAttenuation = albedo;
-		return true;
+		return dot(outRay->dir, hit.normal) > 0;
 	}
 	float3 albedo;
+	float roughness;
 };
 
 class Sphere : public Hittee
@@ -281,8 +286,8 @@ int __cdecl main(int argc, char *argv[])
 
 	LambertianMaterial yellowLambert(float3(1,1,0.0));
 	LambertianMaterial greenLambert(float3(0.3, 0.8, 0.3));
-	MetalMaterial copperMetal(float3(0.8549f, 0.5412f, 0.4039f));
-	MetalMaterial silverMetal(float3(0.9,0.9,0.9));
+	MetalMaterial copperMetal(float3(0.8549f, 0.5412f, 0.4039f), 0.4f);
+	MetalMaterial silverMetal(float3(0.9,0.9,0.9), 0.05f);
 	HitteeList hittees( std::vector<Hittee*>{
 		new Sphere( float3(0.0f, -100, 00.0f), 100.0f, &greenLambert ),
 		new Sphere( float3(0.0f, 0.5f, 0.0f), 0.5f, &yellowLambert ),
