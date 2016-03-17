@@ -8,8 +8,10 @@
 #endif
 
 #include <assert.h>
+#include <chrono>
 #include <float.h>
 #include <math.h>
+#include <random>
 #include <stdio.h>
 #include <vector>
 
@@ -150,9 +152,40 @@ bool CDSF3_VECTORCALL intersectRayBox(float3 rayOrg, float3 invDir, float3 bbmin
     return hit;
 }
 
-float3 CDSF3_VECTORCALL hitColor(const HitRecord &hit)
+float3 CDSF3_VECTORCALL randomInUnitSphere(void)
 {
-	return (hit.normal+float3(1,1,1)) * 0.5f;
+	 // TODO(cort): replace with deterministic algorithm, like octohedron mapping
+	static std::default_random_engine randomGen((unsigned long)std::chrono::high_resolution_clock::now().time_since_epoch().count()); // TODO(cort): seed correctness
+	static std::uniform_real_distribution<float> birandom(-1.0f, 1.0f);
+	float3 p;
+	do
+	{
+		p = float3( birandom(randomGen), birandom(randomGen), birandom(randomGen) );
+	} while(lengthSq(p) >= 1.0f);
+	return p;
+}
+
+float3 CDSF3_VECTORCALL rayColor(const Ray ray, HitteeList &world, int depth = 0)
+{
+	if (depth >= 50)
+		return float3(0,0,0);
+	HitRecord hit;
+	if (world.hit(ray, FLT_EPSILON, FLT_MAX, &hit))
+	{
+		// diffuse: shoot a reflection ray through a random point in the unit sphere above the hit point.
+		float3 target = hit.pos + hit.normal + randomInUnitSphere();
+		const float attenuation = 0.5f;
+		return attenuation * rayColor( Ray(hit.pos, target-hit.pos), world, depth+1 );
+	}
+	else
+	{
+		// background color
+		float3 unitDir = normalize(ray.dir);
+		float t = 0.5f * (unitDir.y() + 1.0f);
+		return lerp( float3(1,1,1), float3(0.5, 0.7, 1.0), t);
+	}
+
+
 }
 
 static const char *filenameSuffix(const char *filename)
@@ -187,6 +220,16 @@ int __cdecl main(int argc, char *argv[])
 
 	const int kOutputWidth  = 800;
 	const int kOutputHeight = 600;
+#ifdef _DEBUG
+	const int kSamplesPerPixel = 10;
+#else
+	const int kSamplesPerPixel = 100;
+#endif
+
+	std::default_random_engine randomGen;
+	randomGen.seed((unsigned long)std::chrono::high_resolution_clock::now().time_since_epoch().count()); // TODO(cort): seed correctness
+	std::uniform_real_distribution<float> randomPixelOffsetX(-1.0f/(float)kOutputWidth,  1.0f/(float)kOutputWidth);
+	std::uniform_real_distribution<float> randomPixelOffsetY(-1.0f/(float)kOutputHeight, 1.0f/(float)kOutputHeight);
 
 	HitteeList hittees( std::vector<Hittee*>{
 		new Sphere( float3(0.0f, 0.5f, 0.0f), 0.5f ),
@@ -210,21 +253,15 @@ int __cdecl main(int argc, char *argv[])
 		{
 			float u = float(iX) / float(kOutputWidth-1);
 			float v = 1.0f - float(iY) / float(kOutputHeight-1);
-			Ray ray = camera.ray(u,v);
 			float3 color(0,0,0);
-
-			HitRecord hit;
-			if (hittees.hit(ray, 0, FLT_MAX, &hit))
+			for(int iS=0; iS<kSamplesPerPixel; ++iS)
 			{
-				color = hitColor(hit);
+				Ray ray = camera.ray(
+					u + randomPixelOffsetX(randomGen),
+					v + randomPixelOffsetY(randomGen));
+				color += rayColor(ray, hittees);
 			}
-			else
-			{
-				// background color
-				float3 unitDir = normalize(ray.dir);
-				float t = 0.5f * (unitDir.y() + 1.0f);
-				color = lerp( float3(1,1,1), float3(0.5, 0.7, 1.0), t);
-			}
+			color /= kSamplesPerPixel;
 
 			float *out = outputPixels + 4*(kOutputWidth*iY + iX);
 			color.store( out );
@@ -264,6 +301,6 @@ int __cdecl main(int argc, char *argv[])
 	delete [] outputPixels;
 
 	double elapsed = double(endTime.QuadPart-startTime.QuadPart) / double(timerFreq.QuadPart);
-	printf("Rendered %s [%dx%d] in %.3f seconds\n", outputFilename, kOutputWidth, kOutputHeight, elapsed);
+	printf("Rendered %s [%dx%d %ds/p] in %.3f seconds\n", outputFilename, kOutputWidth, kOutputHeight, kSamplesPerPixel, elapsed);
 	return 0;
 }
