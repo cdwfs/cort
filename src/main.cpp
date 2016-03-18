@@ -54,6 +54,18 @@ public:
 		return m_uniform(m_randomGen);
 	}
 
+	//! Returns a random point in the radius=1 disk centered at the origin of the XY plane.
+	float3 CDSF3_VECTORCALL randomInUnitDisk(void)
+	{
+		 // TODO(cort): replace with deterministic algorithm, like octohedron mapping
+		float3 p;
+		do
+		{
+			p = float3( m_biuniform(m_randomGen), m_biuniform(m_randomGen), 0 );
+		} while(lengthSq(p) >= 1.0f);
+		return p;
+	}
+
 	//! Returns a random point in the radius=1 sphere centered at the origin.
 	float3 CDSF3_VECTORCALL randomInUnitSphere(void)
 	{
@@ -85,27 +97,33 @@ struct Ray
 class Camera
 {
 public:
-	explicit Camera(float3 eyePos, float3 target, float3 up, float fovV, float aspectRatio)
+	explicit Camera(float3 eyePos, float3 target, float3 up, float fovV, float aspectRatio, float aperture, float focusDistance)
 	{
+		lensRadius = aperture/2;
 		float theta = float(fovV * M_PI/180);
-		float halfHeight = tanf(theta*0.5f);
+		float halfHeight = tanf(theta/2);
 		float halfWidth = aspectRatio * halfHeight;
 		pos = eyePos;
-		float3 camBack  = normalize(eyePos - target);
-		float3 camRight = normalize(cross(up, camBack));
-		float3 camUp = cross(camBack,camRight);
-		lowerLeft = eyePos - halfWidth*camRight - halfHeight*camUp - camBack;
-		horizontal = 2*halfWidth*camRight;
-		vertical = 2*halfHeight*camUp;
+		float3 unitBack  = normalize(eyePos - target);
+		unitRight = normalize(cross(up, unitBack));
+		unitUp = cross(unitBack,unitRight);
+		lowerLeft = eyePos - focusDistance*(halfWidth*unitRight + halfHeight*unitUp + unitBack);
+		horizontal = 2 * halfWidth * focusDistance * unitRight;
+		vertical = 2 * halfHeight * focusDistance * unitUp;
 	}
-	Ray ray(float u, float v) const
+	Ray CDSF3_VECTORCALL ray(float u, float v) const
 	{
-		return Ray(pos, lowerLeft + u*horizontal + v*vertical - pos);
+		float3 rd = lensRadius * g_rng.randomInUnitDisk();
+		float3 offset = unitRight * rd.x() + unitUp * rd.y();
+		return Ray(pos+offset, lowerLeft + u*horizontal + v*vertical - pos - offset);
 	}
 	float3 pos;
 	float3 lowerLeft;
 	float3 horizontal;
 	float3 vertical;
+	float3 unitRight;
+	float3 unitUp;
+	float lensRadius;
 };
 
 class Material;
@@ -392,10 +410,12 @@ int __cdecl main(int argc, char *argv[])
 	});
 
 	const float aspectRatio = (float)kOutputWidth / (float)kOutputHeight;
-	const float3 camPos    = float3( 0, 1, 5);
-	const float3 camTarget = float3(0,0,0);
+	const float3 camPos    = float3( 2, 1, 1);
+	const float3 camTarget = float3(0,0.5f,0);
 	const float3 camUp     = float3( 0, 1, 0);
-	Camera camera(camPos, camTarget, camUp, 45.0f, aspectRatio);
+	const float camAperture = 0.03f;
+	const float camFocusDistance = length(camTarget-camPos);
+	Camera camera(camPos, camTarget, camUp, 45.0f, aspectRatio, camAperture, camFocusDistance);
 
 	float *outputPixels = new float[kOutputWidth * kOutputHeight * 4];
 
