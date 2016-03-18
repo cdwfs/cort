@@ -24,6 +24,24 @@ static inline float clamp(float x, float a, float b)
 	return (x<a) ? a : (x>b ? b : x);
 }
 
+// Computes a refracted vector. Returns false if total internal reflection occurs.
+// niOverNt is refractionIndex when entering an object, and 1/refractionIndex when exiting into air.
+static CDSF3_INLINE bool CDSF3_VECTORCALL refract(float3 vIn, float3 n, float niOverNt, float3 *vOut)
+{
+	float3 vInUnit = normalize(vIn);
+	float dt = dot(vInUnit, n);
+	float discriminant = 1.0f - niOverNt*niOverNt*(1.0f-dt*dt);
+	if (discriminant > 0)
+	{
+		*vOut = niOverNt * (vInUnit - n*dt) - n*sqrtf(discriminant);
+		return true;
+	}
+	else
+	{
+		return false;
+	}
+}
+
 class RNG
 {
 public:
@@ -171,6 +189,63 @@ public:
 	float roughness;
 };
 
+class DieletricMaterial : public Material
+{
+public:
+	explicit DieletricMaterial(float3 albedo, float refractionIndex) : albedo(albedo), refractionIndex(refractionIndex) {}
+	bool CDSF3_VECTORCALL scatter(const Ray rayIn, const HitRecord &hit, float3 *outAttenuation, Ray *outRay) const override
+	{
+		float3 nOut;
+		float niOverNt;
+		float cosine;
+		float rayDotNormal = dot(rayIn.dir, hit.normal);
+		// TODO(cort): doesn't correctly handle transitions between dielectric <-> non-air materials
+		if (rayDotNormal > 0) // exiting object into air
+		{
+			nOut = -hit.normal;
+			niOverNt = refractionIndex;
+			cosine = refractionIndex * rayDotNormal / length(rayIn.dir);
+
+		}
+		else // entering object from air
+		{
+			nOut = hit.normal;
+			niOverNt = 1.0f / refractionIndex;
+			cosine = -rayDotNormal / length(rayIn.dir);
+		}
+
+		float3 refractedDir;
+		float reflectionChance;
+		*outAttenuation = albedo; // dielectrics absorb nothing. TODO(cort) but what about colored glass?
+		if (refract(rayIn.dir, nOut, niOverNt, &refractedDir))
+		{
+			reflectionChance = schlick(cosine);
+		}
+		else
+		{
+			reflectionChance = 1.0f;
+		}
+		if (g_rng.random01() < reflectionChance)
+		{
+			*outRay = Ray(hit.pos, reflect(rayIn.dir, hit.normal));
+		}
+		else
+		{
+			*outRay = Ray(hit.pos, refractedDir);
+		}
+		return true;
+	}
+	float3 albedo;
+	float refractionIndex;
+private:
+	inline float schlick(float cosine) const
+	{
+		float r0 = (1-refractionIndex) / (1+refractionIndex);
+		r0 *= r0;
+		return r0 + (1-r0)*pow((1-cosine), 5);
+	}
+};
+
 class Sphere : public Hittee
 {
 public:
@@ -306,11 +381,14 @@ int __cdecl main(int argc, char *argv[])
 	LambertianMaterial greenLambert(float3(0.3, 0.8, 0.3));
 	MetalMaterial copperMetal(float3(0.8549f, 0.5412f, 0.4039f), 0.4f);
 	MetalMaterial silverMetal(float3(0.9,0.9,0.9), 0.05f);
+	DieletricMaterial whiteGlass(float3(1,1,1), 1.5f);
+	DieletricMaterial yellowGlass(float3(1,1,0.9f), 1.5f);
 	HitteeList hittees( std::vector<Hittee*>{
 		new Sphere( float3(0.0f, -100, 00.0f), 100.0f, &greenLambert ),
-		new Sphere( float3(0.0f, 0.5f, 0.0f), 0.5f, &yellowLambert ),
-		new Sphere( float3(-1.0f, 0.5f, 0.0f), 0.5f, &copperMetal ),
-		new Sphere( float3( 1.0f, 0.5f, 0.0f), 0.5f, &silverMetal ),
+		new Sphere( float3(0.0f, 0.5f, 0.0f), 0.5f, &silverMetal ),
+		new Sphere( float3(-1.1f, 0.5f, 0.0f), 0.5f, &copperMetal ),
+		new Sphere( float3( 1.1f, 0.5f, 0.0f), 0.5f, &whiteGlass ),
+		new Sphere( float3( 1.1f, 0.5f, 0.0f), -0.48f, &whiteGlass ),
 	});
 
 	const float aspectRatio = (float)kOutputWidth / (float)kOutputHeight;
