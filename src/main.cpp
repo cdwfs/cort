@@ -222,8 +222,8 @@ public:
 		{
 			nOut = -hit.normal;
 			niOverNt = refractionIndex;
-			cosine = refractionIndex * rayDotNormal / length(rayIn.dir);
-
+			cosine = rayDotNormal / length(rayIn.dir);
+			cosine = sqrtf(1.0f - refractionIndex*refractionIndex*(1.0f-cosine*cosine));
 		}
 		else // entering object from air
 		{
