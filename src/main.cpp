@@ -24,18 +24,36 @@ static inline float clamp(float x, float a, float b)
 	return (x<a) ? a : (x>b ? b : x);
 }
 
-static float3 CDSF3_VECTORCALL randomInUnitSphere(void)
+class RNG
 {
-	 // TODO(cort): replace with deterministic algorithm, like octohedron mapping
-	static std::default_random_engine randomGen((unsigned long)std::chrono::high_resolution_clock::now().time_since_epoch().count()); // TODO(cort): seed correctness
-	static std::uniform_real_distribution<float> birandom(-1.0f, 1.0f);
-	float3 p;
-	do
+public:
+	RNG() : m_randomGen( (unsigned long)std::chrono::high_resolution_clock::now().time_since_epoch().count() ),
+		m_uniform(0.0f, 1.0f), m_biuniform(-1.0f, 1.0f) {}
+	explicit RNG(unsigned long seed) : m_randomGen(seed), m_uniform(0.0f, 1.0f), m_biuniform(-1.0f, 1.0f) {}
+
+	inline float random01(void)
 	{
-		p = float3( birandom(randomGen), birandom(randomGen), birandom(randomGen) );
-	} while(lengthSq(p) >= 1.0f);
-	return p;
-}
+		return m_uniform(m_randomGen);
+	}
+
+	//! Returns a random point in the radius=1 sphere centered at the origin.
+	float3 CDSF3_VECTORCALL randomInUnitSphere(void)
+	{
+		 // TODO(cort): replace with deterministic algorithm, like octohedron mapping
+		float3 p;
+		do
+		{
+			p = float3( m_biuniform(m_randomGen), m_biuniform(m_randomGen), m_biuniform(m_randomGen) );
+		} while(lengthSq(p) >= 1.0f);
+		return p;
+	}
+
+private:
+	std::default_random_engine m_randomGen; // TODO(cort): seed correctness?
+	std::uniform_real_distribution<float> m_uniform;
+	std::uniform_real_distribution<float> m_biuniform;
+};
+static RNG g_rng;
 
 struct Ray
 {
@@ -129,7 +147,7 @@ public:
 	bool CDSF3_VECTORCALL scatter(const Ray rayIn, const HitRecord &hit, float3 *outAttenuation, Ray *outRay) const override
 	{
 		// scatter towards a random point in the unit sphere above the hit point
-		float3 target = hit.pos + hit.normal + randomInUnitSphere();
+		float3 target = hit.pos + hit.normal + g_rng.randomInUnitSphere();
 		*outRay = Ray(hit.pos, target-hit.pos);
 		*outAttenuation = albedo;
 		return true;
@@ -145,7 +163,7 @@ public:
 	bool CDSF3_VECTORCALL scatter(const Ray rayIn, const HitRecord &hit, float3 *outAttenuation, Ray *outRay) const override
 	{
 		float3 reflectDir = reflect(normalize(rayIn.dir), hit.normal);
-		*outRay = Ray(hit.pos, reflectDir + roughness*randomInUnitSphere());
+		*outRay = Ray(hit.pos, reflectDir + roughness*g_rng.randomInUnitSphere());
 		*outAttenuation = albedo;
 		return dot(outRay->dir, hit.normal) > 0;
 	}
