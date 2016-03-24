@@ -150,7 +150,7 @@ public:
 	{
 		HitRecord hitRecord;
 		bool hitSomething = false;
-		float closestSoFar = FLT_MAX;
+		float closestSoFar = tMax;
 		for(auto itor = list.begin(); itor != list.end(); ++itor)
 		{
 			if ((*itor)->hit(ray, tMin, closestSoFar, &hitRecord))
@@ -180,7 +180,7 @@ class LambertianMaterial : public Material
 {
 public:
 	explicit LambertianMaterial(float3 albedo) : albedo(albedo) {}
-	bool CDSF3_VECTORCALL scatter(const Ray rayIn, const HitRecord &hit, float3 *outAttenuation, Ray *outRay) const override
+	bool CDSF3_VECTORCALL scatter(const Ray /*rayIn*/, const HitRecord &hit, float3 *outAttenuation, Ray *outRay) const override
 	{
 		// scatter towards a random point in the unit sphere above the hit point
 		float3 target = hit.pos + hit.normal + g_rng.randomInUnitSphere();
@@ -346,7 +346,7 @@ float3 CDSF3_VECTORCALL rayColor(const Ray ray, HitteeList &world, int depth = 0
 		// background color
 		float3 unitDir = normalize(ray.dir);
 		float t = 0.5f * (unitDir.y() + 1.0f);
-		return lerp( float3(1,1,1), float3(0.5, 0.7, 1.0), t);
+		return lerp( float3(1,1,1), float3(0.5f, 0.7f, 1.0f), t);
 	}
 
 
@@ -364,7 +364,7 @@ static const char *filenameSuffix(const char *filename)
 	return NULL;
 }
 
-int __cdecl main(int argc, char *argv[])
+int main(int argc, char *argv[])
 {
 #if 0
 	// float3 test code
@@ -396,9 +396,9 @@ int __cdecl main(int argc, char *argv[])
 	std::uniform_real_distribution<float> randomPixelOffsetY(-1.0f/(float)kOutputHeight, 1.0f/(float)kOutputHeight);
 
 	LambertianMaterial yellowLambert(float3(1,1,0.0));
-	LambertianMaterial greenLambert(float3(0.3, 0.8, 0.3));
+	LambertianMaterial greenLambert(float3(0.3f, 0.8f, 0.3f));
 	MetalMaterial copperMetal(float3(0.8549f, 0.5412f, 0.4039f), 0.4f);
-	MetalMaterial silverMetal(float3(0.9,0.9,0.9), 0.05f);
+	MetalMaterial silverMetal(float3(0.9f,0.9f,0.9f), 0.05f);
 	DieletricMaterial whiteGlass(float3(1,1,1), 1.5f);
 	DieletricMaterial yellowGlass(float3(1,1,0.9f), 1.5f);
 	HitteeList hittees( std::vector<Hittee*>{
