@@ -83,7 +83,7 @@ private:
 	std::uniform_real_distribution<float> m_uniform;
 	std::uniform_real_distribution<float> m_biuniform;
 };
-static RNG g_rng;
+static RNG *g_rng = nullptr;
 
 struct Ray
 {
@@ -113,7 +113,7 @@ public:
 	}
 	Ray CDSF3_VECTORCALL ray(float u, float v) const
 	{
-		float3 rd = lensRadius * g_rng.randomInUnitDisk();
+		float3 rd = lensRadius * g_rng->randomInUnitDisk();
 		float3 offset = unitRight * rd.x() + unitUp * rd.y();
 		return Ray(pos+offset, lowerLeft + u*horizontal + v*vertical - pos - offset);
 	}
@@ -183,7 +183,7 @@ public:
 	bool CDSF3_VECTORCALL scatter(const Ray /*rayIn*/, const HitRecord &hit, float3 *outAttenuation, Ray *outRay) const override
 	{
 		// scatter towards a random point in the unit sphere above the hit point
-		float3 target = hit.pos + hit.normal + g_rng.randomInUnitSphere();
+		float3 target = hit.pos + hit.normal + g_rng->randomInUnitSphere();
 		*outRay = Ray(hit.pos, target-hit.pos);
 		*outAttenuation = albedo;
 		return true;
@@ -199,7 +199,7 @@ public:
 	bool CDSF3_VECTORCALL scatter(const Ray rayIn, const HitRecord &hit, float3 *outAttenuation, Ray *outRay) const override
 	{
 		float3 reflectDir = reflect(normalize(rayIn.dir), hit.normal);
-		*outRay = Ray(hit.pos, reflectDir + roughness*g_rng.randomInUnitSphere());
+		*outRay = Ray(hit.pos, reflectDir + roughness*g_rng->randomInUnitSphere());
 		*outAttenuation = albedo;
 		return dot(outRay->dir, hit.normal) > 0;
 	}
@@ -243,7 +243,7 @@ public:
 		{
 			reflectionChance = 1.0f;
 		}
-		if (g_rng.random01() < reflectionChance)
+		if (g_rng->random01() < reflectionChance)
 		{
 			*outRay = Ray(hit.pos, reflect(rayIn.dir, hit.normal));
 		}
@@ -364,6 +364,15 @@ static const char *filenameSuffix(const char *filename)
 	return NULL;
 }
 
+static void usage(const char *argv0)
+{
+	printf("usage: %s [ARGS]\n", argv0);
+	printf("-seed N   Seed RNG with N [default: current time]\n");
+	printf("-out F    Specify output file [default: out.png]\n");
+	printf("          Output file format is determined from the file suffix.\n");
+	printf("          Supported formats: PNG, BMP, TGA, HDR\n");
+}
+
 int main(int argc, char *argv[])
 {
 #if 0
@@ -374,12 +383,27 @@ int main(int argc, char *argv[])
 	return 0;
 #endif
 
-	if (argc < 2)
+	const char *outputFilename = "out.png";
+	unsigned int randomSeed = (unsigned long)std::chrono::high_resolution_clock::now().time_since_epoch().count();
+	for(int iArg=0; iArg<argc; ++iArg)
 	{
-		printf("usage: %1 [output.hdr]\n", argv[0]);
-		return 0;
+		if (0 == strncmp(argv[iArg], "--help", 6) ||
+			0 == strncmp(argv[iArg], "-h", 2))
+		{
+			usage(argv[0]);
+			return 0;
+		}
+		else if (0 == strncmp(argv[iArg], "-seed", 5) && iArg+1 < argc)
+		{
+			randomSeed = (unsigned long)strtol(argv[++iArg], NULL, 10);
+			continue;
+		}
+		else if (0 == strncmp(argv[iArg], "-out", 4) && iArg+1 < argc)
+		{
+			outputFilename = argv[++iArg];
+			continue;
+		}
 	}
-	const char *outputFilename = argv[1];
 	const char *outputFilenameSuffix = filenameSuffix(outputFilename);
 
 	const int kOutputWidth  = 800;
@@ -390,8 +414,10 @@ int main(int argc, char *argv[])
 	const int kSamplesPerPixel = 100;
 #endif
 
+	g_rng = new RNG(randomSeed);
+
 	std::default_random_engine randomGen;
-	randomGen.seed((unsigned long)std::chrono::high_resolution_clock::now().time_since_epoch().count()); // TODO(cort): seed correctness
+	randomGen.seed(randomSeed);
 	std::uniform_real_distribution<float> randomPixelOffsetX(-1.0f/(float)kOutputWidth,  1.0f/(float)kOutputWidth);
 	std::uniform_real_distribution<float> randomPixelOffsetY(-1.0f/(float)kOutputHeight, 1.0f/(float)kOutputHeight);
 
@@ -411,7 +437,7 @@ int main(int argc, char *argv[])
 
 	const float aspectRatio = (float)kOutputWidth / (float)kOutputHeight;
 	const float3 camPos    = float3( 2, 1, 1);
-	const float3 camTarget = float3(0,0.5f,0);
+	const float3 camTarget = float3( 0, 0.5f, 0);
 	const float3 camUp     = float3( 0, 1, 0);
 	const float camAperture = 0.03f;
 	const float camFocusDistance = length(camTarget-camPos);
