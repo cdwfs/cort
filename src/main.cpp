@@ -472,7 +472,7 @@ int main(int argc, char *argv[])
 	QueryPerformanceCounter(&endTime);
 
 	int imageWriteSuccess = 0;
-	if (strncmp(outputFilenameSuffix, "hdr", 3) == 0)
+	if (_strnicmp(outputFilenameSuffix, "hdr", 3) == 0)
 	{
 		imageWriteSuccess = stbi_write_hdr(outputFilename, kOutputWidth, kOutputHeight, 4, outputPixels);
 	}
@@ -490,11 +490,11 @@ int main(int argc, char *argv[])
 				( uint8_t(255.99f*color.b()) << 16 ) |
 				( 0xFF                       << 24 );
 		}
-		if (strncmp(outputFilenameSuffix, "bmp", 3) == 0)
+		if (_strnicmp(outputFilenameSuffix, "bmp", 3) == 0)
 			imageWriteSuccess = stbi_write_bmp(outputFilename, kOutputWidth, kOutputHeight, 4, normalizedPixels);
-		if (strncmp(outputFilenameSuffix, "png", 3) == 0)
+		if (_strnicmp(outputFilenameSuffix, "png", 3) == 0)
 			imageWriteSuccess = stbi_write_png(outputFilename, kOutputWidth, kOutputHeight, 4, normalizedPixels, kOutputWidth*sizeof(uint32_t));
-		if (strncmp(outputFilenameSuffix, "tga", 3) == 0)
+		if (_strnicmp(outputFilenameSuffix, "tga", 3) == 0)
 			imageWriteSuccess = stbi_write_tga(outputFilename, kOutputWidth, kOutputHeight, 4, normalizedPixels);
 		delete [] normalizedPixels;
 	}
