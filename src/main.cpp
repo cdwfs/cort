@@ -48,13 +48,24 @@ static CDSF3_INLINE bool CDSF3_VECTORCALL refract(float3 vIn, float3 n, float ni
 class RNG
 {
 public:
-    RNG() : m_randomGen( (unsigned long)std::chrono::high_resolution_clock::now().time_since_epoch().count() ),
-        m_uniform(0.0f, 1.0f), m_biuniform(-1.0f, 1.0f) {}
-    explicit RNG(unsigned long seed) : m_randomGen(seed), m_uniform(0.0f, 1.0f), m_biuniform(-1.0f, 1.0f) {}
+    RNG()
+        :   RNG( (unsigned long)std::chrono::high_resolution_clock::now().time_since_epoch().count() )
+    {}
+    explicit RNG(unsigned long seed)
+        :   m_randomGen(seed)
+        ,   m_uniform(0.0f, 1.0f)
+        ,   m_biuniform(-1.0f, 1.0f)
+        ,   m_uniformUint32(0, UINT_MAX)
+    {}
 
-    inline float random01(void)
+    ZOMBO_INLINE float random01(void)
     {
         return m_uniform(m_randomGen);
+    }
+
+    ZOMBO_INLINE uint32_t randomU32(void)
+    {
+        return m_uniformUint32(m_randomGen);
     }
 
     //! Returns a random point in the radius=1 disk centered at the origin of the XY plane.
@@ -82,9 +93,10 @@ public:
     }
 
 private:
-    std::default_random_engine m_randomGen; // TODO(cort): seed correctness?
+    std::default_random_engine m_randomGen;
     std::uniform_real_distribution<float> m_uniform;
     std::uniform_real_distribution<float> m_biuniform;
+    std::uniform_int_distribution<uint32_t> m_uniformUint32;
 };
 static RNG *g_rng = nullptr;
 
