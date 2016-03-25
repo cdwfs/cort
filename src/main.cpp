@@ -339,7 +339,7 @@ bool CDSF3_VECTORCALL intersectRayBox(float3 rayOrg, float3 invDir, float3 bbmin
     return hit;
 }
 
-float3 CDSF3_VECTORCALL rayColor(const Ray ray, HitteeList &world, int depth = 0)
+float3 CDSF3_VECTORCALL rayColor(const Ray ray, const HitteeList &world, int depth = 0)
 {
     const int kMaxScatterDepth = 50;
     HitRecord hit;
