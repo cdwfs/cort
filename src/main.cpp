@@ -1,10 +1,13 @@
 #include "cds_float3.h"
+#include "platform.h"
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
 
 #ifdef _MSC_VER
 #   include <windows.h>
+#else
+
 #endif
 
 #include <assert.h>
@@ -427,13 +430,14 @@ int main(int argc, char *argv[])
     MetalMaterial silverMetal(float3(0.9f,0.9f,0.9f), 0.05f);
     DieletricMaterial whiteGlass(float3(1,1,1), 1.5f);
     DieletricMaterial yellowGlass(float3(1,1,0.9f), 1.5f);
-    HitteeList hittees( std::vector<Hittee*>{
+    auto contents = std::vector<Hittee*>{
         new Sphere( float3(0.0f, -100, 00.0f), 100.0f, &greenLambert ),
         new Sphere( float3(0.0f, 0.5f, 0.0f), 0.5f, &silverMetal ),
         new Sphere( float3(-1.1f, 0.5f, 0.0f), 0.5f, &copperMetal ),
         new Sphere( float3( 1.1f, 0.5f, 0.0f), 0.5f, &whiteGlass ),
         new Sphere( float3( 1.1f, 0.5f, 0.0f), -0.48f, &whiteGlass ),
-    });
+    };
+    HitteeList hittees(contents);
 
     const float aspectRatio = (float)kOutputWidth / (float)kOutputHeight;
     const float3 camPos    = float3( 2, 1, 1);
@@ -445,9 +449,7 @@ int main(int argc, char *argv[])
 
     float *outputPixels = new float[kOutputWidth * kOutputHeight * 4];
 
-    LARGE_INTEGER startTime, endTime, timerFreq;
-    QueryPerformanceFrequency(&timerFreq);
-    QueryPerformanceCounter(&startTime);
+    uint64_t startTicks = zomboClockTicks();
     for(int iY=0; iY<kOutputHeight; iY+=1)
     {
         for(int iX=0; iX<kOutputWidth; iX+=1)
@@ -469,10 +471,10 @@ int main(int argc, char *argv[])
             out[3] = 1.0f;
         }
     };
-    QueryPerformanceCounter(&endTime);
+    uint64_t endTicks = zomboClockTicks();
 
     int imageWriteSuccess = 0;
-    if (_strnicmp(outputFilenameSuffix, "hdr", 3) == 0)
+    if (zomboStrncasecmp(outputFilenameSuffix, "hdr", 3) == 0)
     {
         imageWriteSuccess = stbi_write_hdr(outputFilename, kOutputWidth, kOutputHeight, 4, outputPixels);
     }
@@ -490,18 +492,18 @@ int main(int argc, char *argv[])
                 ( uint8_t(255.99f*color.b()) << 16 ) |
                 ( 0xFF                       << 24 );
         }
-        if (_strnicmp(outputFilenameSuffix, "bmp", 3) == 0)
+        if (zomboStrncasecmp(outputFilenameSuffix, "bmp", 3) == 0)
             imageWriteSuccess = stbi_write_bmp(outputFilename, kOutputWidth, kOutputHeight, 4, normalizedPixels);
-        if (_strnicmp(outputFilenameSuffix, "png", 3) == 0)
+        if (zomboStrncasecmp(outputFilenameSuffix, "png", 3) == 0)
             imageWriteSuccess = stbi_write_png(outputFilename, kOutputWidth, kOutputHeight, 4, normalizedPixels, kOutputWidth*sizeof(uint32_t));
-        if (_strnicmp(outputFilenameSuffix, "tga", 3) == 0)
+        if (zomboStrncasecmp(outputFilenameSuffix, "tga", 3) == 0)
             imageWriteSuccess = stbi_write_tga(outputFilename, kOutputWidth, kOutputHeight, 4, normalizedPixels);
         delete [] normalizedPixels;
     }
     assert(imageWriteSuccess);
     delete [] outputPixels;
 
-    double elapsed = double(endTime.QuadPart-startTime.QuadPart) / double(timerFreq.QuadPart);
-    printf("Rendered %s [%dx%d %ds/p] in %.3f seconds\n", outputFilename, kOutputWidth, kOutputHeight, kSamplesPerPixel, elapsed);
+    printf("Rendered %s [%dx%d %ds/p] in %.3f seconds\n", outputFilename,
+        kOutputWidth, kOutputHeight, kSamplesPerPixel, zomboTicksToSeconds(endTicks-startTicks));
     return 0;
 }

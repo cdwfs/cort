@@ -9,6 +9,7 @@
 #   define CDSF3_CONST extern const __declspec(selectany)
 #else
 #   define CDSF3_INLINE
+#   define CDSF3_VECTORCALL
 #   define CDSF3_CONST
 #endif
 
@@ -50,9 +51,11 @@ struct float3
         temp = _mm_shuffle_ps(temp, temp, _MM_SHUFFLE(3, 0, 1, 0));
         m = _mm_move_ss(temp, m);
     }
+#ifdef _MSC_VER // TODO(cort): m128_f32[] does not seem to be portable.
     // Access-by-index functions. These do not use a high-performance path, but are occasionally necessary.
     CDSF3_INLINE float  CDSF3_VECTORCALL operator[](size_t i) const { return m.m128_f32[i]; }
     CDSF3_INLINE float& CDSF3_VECTORCALL operator[](size_t i)       { return m.m128_f32[i]; }
+#endif
 
     CDSF3_INLINE float CDSF3_VECTORCALL r() const     { return x(); }
     CDSF3_INLINE float CDSF3_VECTORCALL g() const     { return y(); }

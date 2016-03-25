@@ -1,11 +1,11 @@
-cmake_minimum_required(VERSION 3.5)
+cmake_minimum_required(VERSION 2.8)
 
 # Remove MinSizeRel and RelWithDebInfo targets
 set(CMAKE_CONFIGURATION_TYPES Debug Release CACHE TYPE INTERNAL FORCE )
 
 project(cort)
 
-SET(headers src/cds_float3.h src/stb_image_write.h)
+SET(headers src/cds_float3.h src/platform.h src/stb_image_write.h)
 
 IF(MSVC)
     set_property(GLOBAL PROPERTY USE_FOLDERS ON)
@@ -15,8 +15,7 @@ IF(MSVC)
     SET(CMAKE_EXE_LINKER_FLAGS_RELEASE "${CMAKE_EXE_LINKER_FLAGS_RELEASE} /LTCG" CACHE TYPE STRING FORCE)
     SET(libs)
 ELSEIF(UNIX)
-    set(CMAKE_BUILD_TYPE Debug)
-    set(CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS} "-march=native")
+    set(CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS} "-march=native -std=c++11" CACHE TYPE STRING FORCE)
     SET(libs m)
 ENDIF()
 
