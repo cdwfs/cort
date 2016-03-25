@@ -10,6 +10,7 @@ At the moment I've only implemented the material in the first book, including th
  * Lambertian, dielectric, and metallic materials
  * Super-sampled anti-aliasing
  * Depth of field
+ * Multi-threaded rendering (but no load-balancing yet)
  
 
 Thankses
