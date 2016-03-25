@@ -5,6 +5,13 @@ I hadn't written a ray tracer in nearly twenty years, so when I found [Peter Shi
 
 The result is nothing remotely fancy or groundbreaking, but now I've caught the ray-tracing bug again.
 
+At the moment I've only implemented the material in the first book, including the following features:
+ * Spheres
+ * Lambertian, dielectric, and metallic materials
+ * Super-sampled anti-aliasing
+ * Depth of field
+ 
+
 Thankses
 ========
  * [Peter Shirley](https://www.cs.utah.edu/~shirley/) for the [In One Weekend](http://in1weekend.com) series
