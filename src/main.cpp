@@ -461,7 +461,7 @@ int main(int argc, char *argv[])
 
     float *outputPixels = new float[kOutputWidth * kOutputHeight * 4];
 
-    uint64_t startTicks = zomboClockTicks();
+    auto startTime = std::chrono::high_resolution_clock::now();
     for(int iY=0; iY<kOutputHeight; iY+=1)
     {
         for(int iX=0; iX<kOutputWidth; iX+=1)
@@ -483,7 +483,7 @@ int main(int argc, char *argv[])
             out[3] = 1.0f;
         }
     };
-    uint64_t endTicks = zomboClockTicks();
+    auto endTime = std::chrono::high_resolution_clock::now();
 
     int imageWriteSuccess = 0;
     if (zomboStrncasecmp(outputFilenameSuffix, "hdr", 3) == 0)
@@ -515,7 +515,8 @@ int main(int argc, char *argv[])
     assert(imageWriteSuccess);
     delete [] outputPixels;
 
+    auto elapsedNanos = std::chrono::duration_cast<std::chrono::nanoseconds>(endTime-startTime).count();
     printf("Rendered %s [%dx%d %ds/p] in %.3f seconds\n", outputFilename,
-        kOutputWidth, kOutputHeight, kSamplesPerPixel, zomboTicksToSeconds(endTicks-startTicks));
+        kOutputWidth, kOutputHeight, kSamplesPerPixel, double(elapsedNanos)/1e9);
     return 0;
 }
