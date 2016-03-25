@@ -1,9 +1,5 @@
 build/*
 
-# TEMP, until I switch to cmake or something
-!build/*.vcxproj
-!build/*.sln
-
 *.obj
 *.htm
 *.manifest*
