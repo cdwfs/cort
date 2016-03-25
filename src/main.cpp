@@ -4,10 +4,16 @@
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
 
-#ifdef _MSC_VER
-#   include <windows.h>
-#else
-
+#if   defined(ZOMBO_COMPILER_MSVC)
+#   if _MSC_VER < 1900
+#       define CDS_THREADLOCAL __declspec(thread)
+#   else
+#       define CDS_THREADLOCAL thread_local
+#   endif
+#elif defined(ZOMBO_COMPILER_GNU)
+#   define CDS_THREADLOCAL __thread
+#elif defined(ZOMBO_COMPILER_CLANG)
+#   define CDS_THREADLOCAL thread_local
 #endif
 
 #include <assert.h>
@@ -16,6 +22,7 @@
 #include <math.h>
 #include <random>
 #include <stdio.h>
+#include <thread>
 #include <vector>
 
 #if !defined(M_PI)
@@ -98,7 +105,8 @@ private:
     std::uniform_real_distribution<float> m_biuniform;
     std::uniform_int_distribution<uint32_t> m_uniformUint32;
 };
-static RNG *g_rng = nullptr;
+
+static CDS_THREADLOCAL RNG *tls_rng = nullptr;
 
 struct Ray
 {
@@ -128,7 +136,7 @@ public:
     }
     Ray CDSF3_VECTORCALL ray(float u, float v) const
     {
-        float3 rd = lensRadius * g_rng->randomInUnitDisk();
+        float3 rd = lensRadius * tls_rng->randomInUnitDisk();
         float3 offset = unitRight * rd.x() + unitUp * rd.y();
         return Ray(pos+offset, lowerLeft + u*horizontal + v*vertical - pos - offset);
     }
@@ -198,7 +206,7 @@ public:
     bool CDSF3_VECTORCALL scatter(const Ray /*rayIn*/, const HitRecord &hit, float3 *outAttenuation, Ray *outRay) const override
     {
         // scatter towards a random point in the unit sphere above the hit point
-        float3 target = hit.pos + hit.normal + g_rng->randomInUnitSphere();
+        float3 target = hit.pos + hit.normal + tls_rng->randomInUnitSphere();
         *outRay = Ray(hit.pos, target-hit.pos);
         *outAttenuation = albedo;
         return true;
@@ -214,7 +222,7 @@ public:
     bool CDSF3_VECTORCALL scatter(const Ray rayIn, const HitRecord &hit, float3 *outAttenuation, Ray *outRay) const override
     {
         float3 reflectDir = reflect(normalize(rayIn.dir), hit.normal);
-        *outRay = Ray(hit.pos, reflectDir + roughness*g_rng->randomInUnitSphere());
+        *outRay = Ray(hit.pos, reflectDir + roughness*tls_rng->randomInUnitSphere());
         *outAttenuation = albedo;
         return dot(outRay->dir, hit.normal) > 0;
     }
@@ -258,7 +266,7 @@ public:
         {
             reflectionChance = 1.0f;
         }
-        if (g_rng->random01() < reflectionChance)
+        if (tls_rng->random01() < reflectionChance)
         {
             *outRay = Ray(hit.pos, reflect(rayIn.dir, hit.normal));
         }
@@ -388,6 +396,56 @@ static void usage(const char *argv0)
     printf("          Supported formats: PNG, BMP, TGA, HDR\n");
 }
 
+struct WorkerArgs
+{
+    const Camera *camera;
+    const HitteeList *scene;
+    float *imgPixels;
+    unsigned int randomSeed;
+    int imgWidth;
+    int imgHeight;
+    int samplesPerPixel;
+    int yStart; // first row to process
+    int yEnd; // one past the last row to process
+};
+void workerFunc(WorkerArgs &threadArgs)
+{
+    tls_rng = new RNG(threadArgs.randomSeed);
+
+    std::default_random_engine randomGen;
+    randomGen.seed(threadArgs.randomSeed);
+    std::uniform_real_distribution<float> randomPixelOffsetX(-1.0f/(float)threadArgs.imgWidth,  1.0f/(float)threadArgs.imgWidth);
+    std::uniform_real_distribution<float> randomPixelOffsetY(-1.0f/(float)threadArgs.imgHeight, 1.0f/(float)threadArgs.imgHeight);
+
+    auto startTime = std::chrono::high_resolution_clock::now();
+    for(int iY=threadArgs.yStart; iY<threadArgs.yEnd; iY+=1)
+    {
+        for(int iX=0; iX<threadArgs.imgWidth; iX+=1)
+        {
+            float u = float(iX) / float(threadArgs.imgWidth-1);
+            float v = 1.0f - float(iY) / float(threadArgs.imgHeight-1);
+            float3 color(0,0,0);
+            for(int iS=0; iS<threadArgs.samplesPerPixel; ++iS)
+            {
+                Ray ray = threadArgs.camera->ray(
+                    u + randomPixelOffsetX(randomGen),
+                    v + randomPixelOffsetY(randomGen));
+                color += rayColor(ray, *threadArgs.scene);
+            }
+            color /= (float)threadArgs.samplesPerPixel;
+
+            float *out = threadArgs.imgPixels + 4*(threadArgs.imgWidth*iY + iX);
+            color.store( out );
+            out[3] = 1.0f;
+        }
+    };
+    auto endTime = std::chrono::high_resolution_clock::now();
+    auto elapsedNanos = std::chrono::duration_cast<std::chrono::nanoseconds>(endTime-startTime).count();
+    printf("Thread %p finished y=[%4d,%4d) in %.3f seconds\n", std::this_thread::get_id(), threadArgs.yStart, threadArgs.yEnd, double(elapsedNanos)/1e9);
+
+    delete tls_rng;
+}
+
 int main(int argc, char *argv[])
 {
 #if 0
@@ -429,12 +487,7 @@ int main(int argc, char *argv[])
     const int kSamplesPerPixel = 100;
 #endif
 
-    g_rng = new RNG(randomSeed);
-
-    std::default_random_engine randomGen;
-    randomGen.seed(randomSeed);
-    std::uniform_real_distribution<float> randomPixelOffsetX(-1.0f/(float)kOutputWidth,  1.0f/(float)kOutputWidth);
-    std::uniform_real_distribution<float> randomPixelOffsetY(-1.0f/(float)kOutputHeight, 1.0f/(float)kOutputHeight);
+    tls_rng = new RNG(randomSeed);
 
     LambertianMaterial yellowLambert(float3(1,1,0.0));
     LambertianMaterial greenLambert(float3(0.3f, 0.8f, 0.3f));
@@ -449,7 +502,7 @@ int main(int argc, char *argv[])
         new Sphere( float3( 1.1f, 0.5f, 0.0f), 0.5f, &whiteGlass ),
         new Sphere( float3( 1.1f, 0.5f, 0.0f), -0.48f, &whiteGlass ),
     };
-    HitteeList hittees(contents);
+    const HitteeList scene(contents);
 
     const float aspectRatio = (float)kOutputWidth / (float)kOutputHeight;
     const float3 camPos    = float3( 2, 1, 1);
@@ -461,28 +514,30 @@ int main(int argc, char *argv[])
 
     float *outputPixels = new float[kOutputWidth * kOutputHeight * 4];
 
+    const int kThreadCount = zomboCpuCount()*2;
+    std::vector<std::thread> threads(kThreadCount);
+    std::vector<WorkerArgs> threadArgs(kThreadCount);
+    const int kRowsPerThread = kOutputHeight / kThreadCount; // final thread rounds up
     auto startTime = std::chrono::high_resolution_clock::now();
-    for(int iY=0; iY<kOutputHeight; iY+=1)
+    for(int iThread=0; iThread<kThreadCount; ++iThread)
     {
-        for(int iX=0; iX<kOutputWidth; iX+=1)
-        {
-            float u = float(iX) / float(kOutputWidth-1);
-            float v = 1.0f - float(iY) / float(kOutputHeight-1);
-            float3 color(0,0,0);
-            for(int iS=0; iS<kSamplesPerPixel; ++iS)
-            {
-                Ray ray = camera.ray(
-                    u + randomPixelOffsetX(randomGen),
-                    v + randomPixelOffsetY(randomGen));
-                color += rayColor(ray, hittees);
-            }
-            color /= kSamplesPerPixel;
+        threadArgs[iThread] = WorkerArgs();
+        threadArgs[iThread].camera = &camera;
+        threadArgs[iThread].scene = &scene;
+        threadArgs[iThread].imgPixels = outputPixels;
+        threadArgs[iThread].randomSeed = tls_rng->randomU32();
+        threadArgs[iThread].imgWidth = kOutputWidth;
+        threadArgs[iThread].imgHeight = kOutputHeight;
+        threadArgs[iThread].samplesPerPixel = kSamplesPerPixel;
+        threadArgs[iThread].yStart = iThread*kRowsPerThread;
+        threadArgs[iThread].yEnd = (iThread < kThreadCount-1) ? (iThread+1)*kRowsPerThread : kOutputHeight;
 
-            float *out = outputPixels + 4*(kOutputWidth*iY + iX);
-            color.store( out );
-            out[3] = 1.0f;
-        }
-    };
+        threads[iThread] = std::thread(workerFunc, threadArgs[iThread]);
+    }
+    for(int iThread=0; iThread<kThreadCount; ++iThread)
+    {
+        threads[iThread].join();
+    }
     auto endTime = std::chrono::high_resolution_clock::now();
 
     int imageWriteSuccess = 0;
