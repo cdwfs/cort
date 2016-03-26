@@ -44,14 +44,14 @@ extern "C"
 #   error Unsupported compiler
 #endif
 
-#if defined(ZOMBO_COMPILER_MSVC)
-#   ifdef __cplusplus
-#       define ZOMBO_INLINE inline
-#   else
-#       define ZOMBO_INLINE __forceinline
-#   endif
+#ifdef __cplusplus
+#   define ZOMBO_INLINE inline
 #else
-#   define ZOMBO_INLINE __attribute__((always_inline))
+#   if defined(ZOMBO_COMPILER_MSVC)
+#       define ZOMBO_INLINE __forceinline
+#   else
+#       define ZOMBO_INLINE __attribute__((always_inline))
+#   endif
 #endif
 
 // Platform-specific header files

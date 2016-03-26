@@ -22,6 +22,7 @@
 
 #include <assert.h>
 #include <chrono>
+#include <climits>
 #include <float.h>
 #include <math.h>
 #include <random>
