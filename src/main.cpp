@@ -13,7 +13,11 @@
 #elif defined(ZOMBO_COMPILER_GNU)
 #   define CDS_THREADLOCAL __thread
 #elif defined(ZOMBO_COMPILER_CLANG)
-#   define CDS_THREADLOCAL thread_local
+#   if defined(ZOMBO_PLATFORM_APPLE)
+#       define CDS_THREADLOCAL __thread
+#   else
+#       define CDS_THREADLOCAL thread_local
+#   endif
 #endif
 
 #include <assert.h>
@@ -408,40 +412,40 @@ struct WorkerArgs
     int yStart; // first row to process
     int yEnd; // one past the last row to process
 };
-void workerFunc(WorkerArgs &threadArgs)
+void workerFunc(WorkerArgs *threadArgs)
 {
-    tls_rng = new RNG(threadArgs.randomSeed);
+    tls_rng = new RNG(threadArgs->randomSeed);
 
     std::default_random_engine randomGen;
-    randomGen.seed(threadArgs.randomSeed);
-    std::uniform_real_distribution<float> randomPixelOffsetX(-1.0f/(float)threadArgs.imgWidth,  1.0f/(float)threadArgs.imgWidth);
-    std::uniform_real_distribution<float> randomPixelOffsetY(-1.0f/(float)threadArgs.imgHeight, 1.0f/(float)threadArgs.imgHeight);
+    randomGen.seed(threadArgs->randomSeed);
+    std::uniform_real_distribution<float> randomPixelOffsetX(-1.0f/(float)threadArgs->imgWidth,  1.0f/(float)threadArgs->imgWidth);
+    std::uniform_real_distribution<float> randomPixelOffsetY(-1.0f/(float)threadArgs->imgHeight, 1.0f/(float)threadArgs->imgHeight);
 
     auto startTime = std::chrono::high_resolution_clock::now();
-    for(int iY=threadArgs.yStart; iY<threadArgs.yEnd; iY+=1)
+    for(int iY=threadArgs->yStart; iY<threadArgs->yEnd; iY+=1)
     {
-        for(int iX=0; iX<threadArgs.imgWidth; iX+=1)
+        for(int iX=0; iX<threadArgs->imgWidth; iX+=1)
         {
-            float u = float(iX) / float(threadArgs.imgWidth-1);
-            float v = 1.0f - float(iY) / float(threadArgs.imgHeight-1);
+            float u = float(iX) / float(threadArgs->imgWidth-1);
+            float v = 1.0f - float(iY) / float(threadArgs->imgHeight-1);
             float3 color(0,0,0);
-            for(int iS=0; iS<threadArgs.samplesPerPixel; ++iS)
+            for(int iS=0; iS<threadArgs->samplesPerPixel; ++iS)
             {
-                Ray ray = threadArgs.camera->ray(
+                Ray ray = threadArgs->camera->ray(
                     u + randomPixelOffsetX(randomGen),
                     v + randomPixelOffsetY(randomGen));
-                color += rayColor(ray, *threadArgs.scene);
+                color += rayColor(ray, *threadArgs->scene);
             }
-            color /= (float)threadArgs.samplesPerPixel;
+            color /= (float)threadArgs->samplesPerPixel;
 
-            float *out = threadArgs.imgPixels + 4*(threadArgs.imgWidth*iY + iX);
+            float *out = threadArgs->imgPixels + 4*(threadArgs->imgWidth*iY + iX);
             color.store( out );
             out[3] = 1.0f;
         }
     };
     auto endTime = std::chrono::high_resolution_clock::now();
     auto elapsedNanos = std::chrono::duration_cast<std::chrono::nanoseconds>(endTime-startTime).count();
-    printf("Thread %p finished y=[%4d,%4d) in %.3f seconds\n", std::this_thread::get_id(), threadArgs.yStart, threadArgs.yEnd, double(elapsedNanos)/1e9);
+    printf("Thread finished y=[%4d,%4d) in %.3f seconds\n", threadArgs->yStart, threadArgs->yEnd, double(elapsedNanos)/1e9);
 
     delete tls_rng;
 }
@@ -532,7 +536,7 @@ int main(int argc, char *argv[])
         threadArgs[iThread].yStart = iThread*kRowsPerThread;
         threadArgs[iThread].yEnd = (iThread < kThreadCount-1) ? (iThread+1)*kRowsPerThread : kOutputHeight;
 
-        threads[iThread] = std::thread(workerFunc, threadArgs[iThread]);
+        threads[iThread] = std::thread(workerFunc, &threadArgs[iThread]);
     }
     for(int iThread=0; iThread<kThreadCount; ++iThread)
     {

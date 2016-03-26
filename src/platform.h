@@ -20,6 +20,8 @@ extern "C"
 #if   defined(_MSC_VER)
 #   define ZOMBO_PLATFORM_WINDOWS
 #elif defined(__APPLE__) || defined(__MACH__)
+#   include <mach/clock.h>
+#   include <mach/mach.h>
 #   define ZOMBO_PLATFORM_APPLE
 #elif defined(unix) || defined(__unix__) || defined(__unix)
 #   include <unistd.h>
@@ -46,10 +48,10 @@ extern "C"
 #   ifdef __cplusplus
 #       define ZOMBO_INLINE inline
 #   else
-#       define ZOMBO_INLINE
+#       define ZOMBO_INLINE __forceinline
 #   endif
 #else
-#   define ZOMBO_INLINE __forceinline
+#   define ZOMBO_INLINE __attribute__((always_inline))
 #endif
 
 // Platform-specific header files
@@ -169,7 +171,7 @@ extern "C"
 #   define ZOMBO_POPCNT32(x) __popcnt(x)
 #   define ZOMBO_POPCNT64(x) __popcnt64(x)
 #elif defined(ZOMBO_COMPILER_CLANG)
-#   include <popcntintrin.h>
+#   include <smmintrin.h>
 #   define ZOMBO_POPCNT32(x) _mm_popcnt_u32(x)
 #   define ZOMBO_POPCNT64(x) _mm_popcnt_u64(x)
 #elif defined(ZOMBO_COMPILER_GNU)
@@ -211,7 +213,14 @@ ZOMBO_DEF ZOMBO_INLINE uint64_t zomboClockTicks(void)
     uint64_t outTicks;
     QueryPerformanceCounter((LARGE_INTEGER*)&outTicks);
     return outTicks;
-#elif defined(ZOMBO_PLATFORM_APPLE) || defined(ZOMBO_PLATFORM_POSIX)
+#elif defined(ZOMBO_PLATFORM_APPLE)
+    clock_serv_t cclock;
+    mach_timespec_t mts;
+    host_get_clock_service(mach_host_self(), CALENDAR_CLOCK, &cclock);
+    clock_get_time(cclock, &mts);
+    mach_port_deallocate(mach_task_self(), cclock);
+    return (uint64_t)mts.tv_nsec + (uint64_t)mts.tv_sec*1000000000ULL;
+#elif defined(ZOMBO_PLATFORM_POSIX)
 #   if defined(_POSIX_TIMERS)
     struct timespec ts;
     clock_gettime(1, &ts);
@@ -239,7 +248,7 @@ ZOMBO_DEF ZOMBO_INLINE double zomboTicksToSeconds(uint64_t ticks)
 }
 
 // zomboProcessId()
-ZOMBO_DEF ZOMBO_INLINE int32_t zomboProcessId(void)
+ZOMBO_DEF ZOMBO_INLINE int zomboProcessId(void)
 {
 #if   defined(ZOMBO_PLATFORM_WINDOWS)
     return GetCurrentProcessId();
@@ -251,12 +260,12 @@ ZOMBO_DEF ZOMBO_INLINE int32_t zomboProcessId(void)
 }
 
 // zomboThreadId()
-ZOMBO_DEF ZOMBO_INLINE int32_t zomboThreadId(void)
+ZOMBO_DEF ZOMBO_INLINE int zomboThreadId(void)
 {
 #if   defined(ZOMBO_PLATFORM_WINDOWS)
     return GetCurrentThreadId();
 #elif defined(ZOMBO_PLATFORM_APPLE) || defined(ZOMBO_PLATFORM_POSIX)
-    return pthread_self();
+    return (int)(intptr_t)pthread_self();
 #else
 #   error Unsupported compiler
 #endif
