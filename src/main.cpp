@@ -125,25 +125,35 @@ struct Ray
 class Camera
 {
 public:
-    explicit Camera(float3 eyePos, float3 target, float3 up, float fovV, float aspectRatio, float aperture, float focusDistance)
+    struct Params
     {
-        lensRadius = aperture/2;
-        float theta = float(fovV * M_PI/180);
+        float3 eyePos;
+        float3 target;
+        float3 up;
+        float fovDegreesV;
+        float aspectRatio;
+        float apertureDiameter;
+        float focusDistance;
+    };
+    explicit Camera(const Params &init)
+    {
+        lensRadius = init.apertureDiameter * 0.5f;
+        float theta = float(init.fovDegreesV * M_PI/180);
         float halfHeight = tanf(theta/2);
-        float halfWidth = aspectRatio * halfHeight;
-        pos = eyePos;
-        float3 unitBack  = normalize(eyePos - target);
-        unitRight = normalize(cross(up, unitBack));
+        float halfWidth = init.aspectRatio * halfHeight;
+        pos = init.eyePos;
+        float3 unitBack  = normalize(init.eyePos - init.target);
+        unitRight = normalize(cross(init.up, unitBack));
         unitUp = cross(unitBack,unitRight);
-        lowerLeft = eyePos - focusDistance*(halfWidth*unitRight + halfHeight*unitUp + unitBack);
-        horizontal = 2 * halfWidth * focusDistance * unitRight;
-        vertical = 2 * halfHeight * focusDistance * unitUp;
+        lowerLeft = init.eyePos - init.focusDistance*(halfWidth*unitRight + halfHeight*unitUp + unitBack);
+        horizontal = 2 * halfWidth * init.focusDistance * unitRight;
+        vertical = 2 * halfHeight * init.focusDistance * unitUp;
     }
-    Ray CDSF3_VECTORCALL ray(float u, float v) const
+    Ray CDSF3_VECTORCALL rayTo(float u01, float v01) const
     {
         float3 rd = lensRadius * tls_rng->randomInUnitDisk();
         float3 offset = unitRight * rd.x() + unitUp * rd.y();
-        return Ray(pos+offset, lowerLeft + u*horizontal + v*vertical - pos - offset);
+        return Ray(pos+offset, lowerLeft + u01*horizontal + v01*vertical - pos - offset);
     }
     float3 pos;
     float3 lowerLeft;
@@ -423,7 +433,7 @@ void workerFunc(WorkerArgs *threadArgs)
             float3 color(0,0,0);
             for(int iS=0; iS<threadArgs->samplesPerPixel; ++iS)
             {
-                Ray ray = threadArgs->camera->ray(
+                Ray ray = threadArgs->camera->rayTo(
                     u + randomPixelOffsetX(randomGen),
                     v + randomPixelOffsetY(randomGen));
                 color += rayColor(ray, *threadArgs->scene);
@@ -514,13 +524,15 @@ int main(int argc, char *argv[])
     };
     const HitteeList scene(contents);
 
-    const float aspectRatio = (float)kOutputWidth / (float)kOutputHeight;
-    const float3 camPos    = float3( 2, 1, 1);
-    const float3 camTarget = float3( 0, 0.5f, 0);
-    const float3 camUp     = float3( 0, 1, 0);
-    const float camAperture = 0.03f;
-    const float camFocusDistance = length(camTarget-camPos);
-    Camera camera(camPos, camTarget, camUp, 45.0f, aspectRatio, camAperture, camFocusDistance);
+    Camera::Params cameraParams = {};
+    cameraParams.eyePos      = float3( 2, 1, 1);
+    cameraParams.target      = float3( 0, 0.5f, 0);
+    cameraParams.up          = float3( 0, 1, 0);
+    cameraParams.fovDegreesV = 45.0f;
+    cameraParams.aspectRatio = (float)kOutputWidth / (float)kOutputHeight;
+    cameraParams.apertureDiameter = 0.03f;
+    cameraParams.focusDistance = length(cameraParams.target-cameraParams.eyePos);
+    Camera camera(cameraParams);
 
     float *outputPixels = new float[kOutputWidth * kOutputHeight * 4];
 
