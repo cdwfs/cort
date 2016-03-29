@@ -449,6 +449,7 @@ static void usage(const char *argv0)
     printf("-out F    Specify output file [default: out.png]\n");
     printf("          Output file format is determined from the file suffix.\n");
     printf("          Supported formats: PNG, BMP, TGA, HDR\n");
+    printf("-preview  Render a low-quality preview, to quickly verify scene composition.\n");
 }
 
 int main(int argc, char *argv[])
@@ -459,6 +460,14 @@ int main(int argc, char *argv[])
     bool hit = intersectRayBox(float3(0,0,0), float3(1, 1, 1) / float3(1,0,0), float3(-1,-1,-1), float3(1,1,1), hitT);
     printf("hit %i at t=%f\n", hit, hitT);
     return 0;
+#endif
+
+    int kOutputWidth  = 800;
+    int kOutputHeight = 600;
+#ifdef _DEBUG
+    int kSamplesPerPixel = 10;
+#else
+    int kSamplesPerPixel = 100;
 #endif
 
     const char *outputFilename = "out.png";
@@ -481,16 +490,12 @@ int main(int argc, char *argv[])
             outputFilename = argv[++iArg];
             continue;
         }
+        else if (0 == strncmp(argv[iArg], "-preview", 9))
+        {
+            kSamplesPerPixel = 1;
+        }
     }
     const char *outputFilenameSuffix = filenameSuffix(outputFilename);
-
-    const int kOutputWidth  = 800;
-    const int kOutputHeight = 600;
-#ifdef _DEBUG
-    const int kSamplesPerPixel = 10;
-#else
-    const int kSamplesPerPixel = 100;
-#endif
 
     tls_rng = new RNG(randomSeed);
 
