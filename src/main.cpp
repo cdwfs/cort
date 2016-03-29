@@ -392,15 +392,6 @@ static const char *filenameSuffix(const char *filename)
     return NULL;
 }
 
-static void usage(const char *argv0)
-{
-    printf("usage: %s [ARGS]\n", argv0);
-    printf("-seed N   Seed RNG with N [default: current time]\n");
-    printf("-out F    Specify output file [default: out.png]\n");
-    printf("          Output file format is determined from the file suffix.\n");
-    printf("          Supported formats: PNG, BMP, TGA, HDR\n");
-}
-
 struct WorkerArgs
 {
     const Camera *camera;
@@ -451,6 +442,15 @@ void workerFunc(WorkerArgs *threadArgs)
     delete tls_rng;
 }
 
+static void usage(const char *argv0)
+{
+    printf("usage: %s [ARGS]\n", argv0);
+    printf("-seed N   Seed RNG with N [default: current time]\n");
+    printf("-out F    Specify output file [default: out.png]\n");
+    printf("          Output file format is determined from the file suffix.\n");
+    printf("          Supported formats: PNG, BMP, TGA, HDR\n");
+}
+
 int main(int argc, char *argv[])
 {
 #if 0
@@ -463,20 +463,20 @@ int main(int argc, char *argv[])
 
     const char *outputFilename = "out.png";
     unsigned int randomSeed = (unsigned long)std::chrono::high_resolution_clock::now().time_since_epoch().count();
-    for(int iArg=0; iArg<argc; ++iArg)
+    for(int iArg=1; iArg<argc; ++iArg)
     {
-        if (0 == strncmp(argv[iArg], "--help", 6) ||
-            0 == strncmp(argv[iArg], "-h", 2))
+        if (0 == strncmp(argv[iArg], "--help", 7) ||
+            0 == strncmp(argv[iArg], "-h", 3))
         {
             usage(argv[0]);
             return 0;
         }
-        else if (0 == strncmp(argv[iArg], "-seed", 5) && iArg+1 < argc)
+        else if (0 == strncmp(argv[iArg], "-seed", 6) && iArg+1 < argc)
         {
             randomSeed = (unsigned long)strtol(argv[++iArg], NULL, 10);
             continue;
         }
-        else if (0 == strncmp(argv[iArg], "-out", 4) && iArg+1 < argc)
+        else if (0 == strncmp(argv[iArg], "-out", 5) && iArg+1 < argc)
         {
             outputFilename = argv[++iArg];
             continue;
