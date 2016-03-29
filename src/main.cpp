@@ -39,6 +39,86 @@ static inline float clamp(float x, float a, float b)
     return (x<a) ? a : (x>b ? b : x);
 }
 
+template<typename T>
+class AnimationChannel
+{
+public:
+    AnimationChannel() = delete;
+    struct KeyFrame
+    {
+        float time;
+        T value;
+    };
+    AnimationChannel(const T &constantValue) // TODO(cort): make it explicit?
+        :   m_keyTimes(1)
+        ,   m_keyValues(1)
+        ,   m_segmentMatrices(0)
+    {
+        m_keyTimes[0] = 0.0f;
+        m_keyValues[0] = constantValue;
+    }
+    explicit AnimationChannel(const std::vector<KeyFrame> &keyFrames)
+        :   m_keyTimes(keyFrames.size())
+        ,   m_keyValues(keyFrames.size())
+        ,   m_segmentMatrices(keyFrames.size() > 0 ? keyFrames.size()-1 : 0)
+    {
+        int i=0;
+        for(const auto itor : keyFrames)
+        {
+            m_keyTimes[i] = itor.time;
+            m_keyValues[i] = itor.value;
+            ++i;
+        }
+        const float tau = 0.5f;
+        for(int iSeg=0; iSeg<m_segmentMatrices.size(); ++iSeg)
+        {
+            const T p1 = m_keyValues[iSeg+0];
+            const T p2 = m_keyValues[iSeg+1];
+            const T p0 = (iSeg==0) ? p1 : m_keyValues[iSeg-1];
+            const T p3 = (iSeg==m_segmentMatrices.size()-1) ? p2 : m_keyValues[iSeg+2];
+            m_segmentMatrices[iSeg] = {
+                p1,
+                -tau*p0 + tau*p2,
+                2*tau*p0 + (tau-3)*p1 + (3-2*tau)*p2 + -tau*p3,
+                -tau*p0 + (2-tau)*p1 + (tau-2)*p2 + tau*p3,
+            };
+        }
+    }
+
+    T eval(float t) const
+    {
+        if (t <= m_keyTimes[0])
+            return m_keyValues[0];
+        if (t >= m_keyTimes[m_keyTimes.size()-1])
+            return m_keyValues[m_keyTimes.size()-1];
+
+        int segmentCount = (int)m_segmentMatrices.size();
+        int firstSegment=0, lastSegment=segmentCount, iSegment;
+        for(;;)
+        {
+            iSegment = (firstSegment+lastSegment)/2;
+            if (t >= m_keyTimes[iSegment] && t<=m_keyTimes[iSegment+1])
+                break;
+            assert(firstSegment != lastSegment); // search will never terminate
+            if (t < m_keyTimes[iSegment])
+                lastSegment = iSegment;
+            else // if (t > m_keyTimes[iSegment+1])
+                firstSegment = iSegment;
+        }
+        float t01 = (t-m_keyTimes[iSegment]) / (m_keyTimes[iSegment+1]-m_keyTimes[iSegment]);
+        const auto &seg = m_segmentMatrices[iSegment];
+        return ((seg.m[3]*t01 + seg.m[2])*t01 + seg.m[1])*t01 + seg.m[0];
+    }
+private:
+    struct SegmentMatrix
+    {
+        T m[4];
+    };
+    std::vector<float> m_keyTimes;
+    std::vector<T> m_keyValues;
+    std::vector<SegmentMatrix> m_segmentMatrices;
+};
+
 // Computes a refracted vector. Returns false if total internal reflection occurs.
 // niOverNt is refractionIndex when entering an object, and 1/refractionIndex when exiting into air.
 static CDSF3_INLINE bool CDSF3_VECTORCALL refract(float3 vIn, float3 n, float niOverNt, float3 *vOut)
@@ -310,10 +390,11 @@ class Sphere : public Hittee
 {
 public:
     Sphere() {}
-    explicit Sphere(float3 center, float radius, const Material *material) : center(center), radius(radius), material(material) {}
+    explicit Sphere(const AnimationChannel<float3> &center, float radius, const Material *material) : center(center), radius(radius), material(material) {}
     virtual bool CDSF3_VECTORCALL hit(const Ray ray, float tMin, float tMax, HitRecord *outRecord) const
     {
-        float3 oc = ray.origin - center;
+        float3 centerNow = center.eval(ray.time);
+        float3 oc = ray.origin - centerNow;
         float a = dot(ray.dir, ray.dir);
         float b = dot(oc, ray.dir);
         float c = dot(oc, oc) - radius*radius;
@@ -326,7 +407,7 @@ public:
             {
                 outRecord->t = t0;
                 outRecord->pos = ray.eval(t0);
-                outRecord->normal = (outRecord->pos - center) / radius;
+                outRecord->normal = (outRecord->pos - centerNow) / radius;
                 outRecord->pMaterial = material;
                 return true;
             }
@@ -335,7 +416,7 @@ public:
             {
                 outRecord->t = t1;
                 outRecord->pos = ray.eval(t1);
-                outRecord->normal = (outRecord->pos - center) / radius;
+                outRecord->normal = (outRecord->pos - centerNow) / radius;
                 outRecord->pMaterial = material;
                 return true;
             }
@@ -343,7 +424,7 @@ public:
         return false;
     }
 
-    float3 center;
+    AnimationChannel<float3> center;
     float radius;
     const Material *material;
 };
@@ -524,7 +605,14 @@ int main(int argc, char *argv[])
     auto contents = std::vector<Hittee*>{
         new Sphere( float3(0.0f, -100, 00.0f), 100.0f, &greenLambert ),
         new Sphere( float3(0.0f, 0.5f, 0.0f), 0.5f, &silverMetal ),
-        new Sphere( float3(-1.1f, 0.5f, 0.0f), 0.5f, &copperMetal ),
+        //new Sphere( float3(-1.1f, 0.5f, 0.0f), 0.5f, &copperMetal ),
+        new Sphere(
+            AnimationChannel<float3>({
+                {0.0f, float3(-0.1f, 0.5f, 0.0f)},
+                {1.0f, float3(-2.1f, 0.5f, 0.0f)},
+            }),
+            0.5f,
+            &copperMetal),
         new Sphere( float3( 1.1f, 0.5f, 0.0f), 0.5f, &whiteGlass ),
         new Sphere( float3( 1.1f, 0.5f, 0.0f), -0.48f, &whiteGlass ),
     };
