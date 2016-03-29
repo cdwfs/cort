@@ -389,7 +389,7 @@ private:
 class Sphere : public Hittee
 {
 public:
-    Sphere() {}
+    Sphere() = delete;
     explicit Sphere(const AnimationChannel<float3> &center, float radius, const Material *material) : center(center), radius(radius), material(material) {}
     virtual bool CDSF3_VECTORCALL hit(const Ray ray, float tMin, float tMax, HitRecord *outRecord) const
     {
