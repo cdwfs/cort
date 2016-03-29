@@ -116,10 +116,11 @@ static CDS_THREADLOCAL RNG *tls_rng = nullptr;
 struct Ray
 {
     Ray() {}
-    explicit Ray(float3 origin, float3 dir) : origin(origin), dir(dir) {}
+    explicit Ray(float3 origin, float3 dir, float time) : origin(origin), dir(dir), time(time) {}
     float3 eval(float t) const { return origin + t*dir; }
 
     float3 origin, dir;
+    float time;
 };
 
 class Camera
@@ -134,10 +135,12 @@ public:
         float aspectRatio;
         float apertureDiameter;
         float focusDistance;
+        float exposureSeconds; ///! in seconds
     };
     explicit Camera(const Params &init)
     {
         lensRadius = init.apertureDiameter * 0.5f;
+        exposureSeconds = init.exposureSeconds;
         float theta = float(init.fovDegreesV * M_PI/180);
         float halfHeight = tanf(theta/2);
         float halfWidth = init.aspectRatio * halfHeight;
@@ -149,11 +152,11 @@ public:
         horizontal = 2 * halfWidth * init.focusDistance * unitRight;
         vertical = 2 * halfHeight * init.focusDistance * unitUp;
     }
-    Ray CDSF3_VECTORCALL rayTo(float u01, float v01) const
+    Ray CDSF3_VECTORCALL rayTo(float u01, float v01, float atTime) const
     {
         float3 rd = lensRadius * tls_rng->randomInUnitDisk();
         float3 offset = unitRight * rd.x() + unitUp * rd.y();
-        return Ray(pos+offset, lowerLeft + u01*horizontal + v01*vertical - pos - offset);
+        return Ray(pos+offset, lowerLeft + u01*horizontal + v01*vertical - pos - offset, atTime + tls_rng->random01() * exposureSeconds);
     }
     float3 pos;
     float3 lowerLeft;
@@ -162,6 +165,7 @@ public:
     float3 unitRight;
     float3 unitUp;
     float lensRadius;
+    float exposureSeconds;
 };
 
 class Material;
@@ -218,11 +222,11 @@ class LambertianMaterial : public Material
 {
 public:
     explicit LambertianMaterial(float3 albedo) : albedo(albedo) {}
-    bool CDSF3_VECTORCALL scatter(const Ray /*rayIn*/, const HitRecord &hit, float3 *outAttenuation, Ray *outRay) const override
+    bool CDSF3_VECTORCALL scatter(const Ray rayIn, const HitRecord &hit, float3 *outAttenuation, Ray *outRay) const override
     {
         // scatter towards a random point in the unit sphere above the hit point
         float3 target = hit.pos + hit.normal + tls_rng->randomInUnitSphere();
-        *outRay = Ray(hit.pos, target-hit.pos);
+        *outRay = Ray(hit.pos, target-hit.pos, rayIn.time);
         *outAttenuation = albedo;
         return true;
     }
@@ -237,7 +241,7 @@ public:
     bool CDSF3_VECTORCALL scatter(const Ray rayIn, const HitRecord &hit, float3 *outAttenuation, Ray *outRay) const override
     {
         float3 reflectDir = reflect(normalize(rayIn.dir), hit.normal);
-        *outRay = Ray(hit.pos, reflectDir + roughness*tls_rng->randomInUnitSphere());
+        *outRay = Ray(hit.pos, reflectDir + roughness*tls_rng->randomInUnitSphere(), rayIn.time);
         *outAttenuation = albedo;
         return dot(outRay->dir, hit.normal) > 0;
     }
@@ -283,11 +287,11 @@ public:
         }
         if (tls_rng->random01() < reflectionChance)
         {
-            *outRay = Ray(hit.pos, reflect(rayIn.dir, hit.normal));
+            *outRay = Ray(hit.pos, reflect(rayIn.dir, hit.normal), rayIn.time);
         }
         else
         {
-            *outRay = Ray(hit.pos, refractedDir);
+            *outRay = Ray(hit.pos, refractedDir, rayIn.time);
         }
         return true;
     }
@@ -408,6 +412,7 @@ struct WorkerArgs
     const HitteeList *scene;
     float *imgPixels;
     unsigned int randomSeed;
+    float time;
     int imgWidth;
     int imgHeight;
     int samplesPerPixel;
@@ -435,7 +440,8 @@ void workerFunc(WorkerArgs *threadArgs)
             {
                 Ray ray = threadArgs->camera->rayTo(
                     u + randomPixelOffsetX(randomGen),
-                    v + randomPixelOffsetY(randomGen));
+                    v + randomPixelOffsetY(randomGen),
+                    threadArgs->time);
                 color += rayColor(ray, *threadArgs->scene);
             }
             color /= (float)threadArgs->samplesPerPixel;
@@ -532,6 +538,7 @@ int main(int argc, char *argv[])
     cameraParams.aspectRatio = (float)kOutputWidth / (float)kOutputHeight;
     cameraParams.apertureDiameter = 0.03f;
     cameraParams.focusDistance = length(cameraParams.target-cameraParams.eyePos);
+    cameraParams.exposureSeconds = 1.0f / 30.0f;
     Camera camera(cameraParams);
 
     float *outputPixels = new float[kOutputWidth * kOutputHeight * 4];
@@ -540,13 +547,15 @@ int main(int argc, char *argv[])
     std::vector<std::thread> threads(kThreadCount);
     std::vector<WorkerArgs> threadArgs(kThreadCount);
     const int kRowsPerThread = kOutputHeight / kThreadCount; // final thread rounds up
-    auto startTime = std::chrono::high_resolution_clock::now();
+    const float captureTime = 0.5f; // what time should the Camera's virtual shutter open?
+    auto startTicks = std::chrono::high_resolution_clock::now();
     for(int iThread=0; iThread<kThreadCount; ++iThread)
     {
         threadArgs[iThread] = WorkerArgs();
         threadArgs[iThread].camera = &camera;
         threadArgs[iThread].scene = &scene;
         threadArgs[iThread].imgPixels = outputPixels;
+        threadArgs[iThread].time = captureTime;
         threadArgs[iThread].randomSeed = tls_rng->randomU32();
         threadArgs[iThread].imgWidth = kOutputWidth;
         threadArgs[iThread].imgHeight = kOutputHeight;
@@ -560,7 +569,7 @@ int main(int argc, char *argv[])
     {
         threads[iThread].join();
     }
-    auto endTime = std::chrono::high_resolution_clock::now();
+    auto endTicks = std::chrono::high_resolution_clock::now();
 
     int imageWriteSuccess = 0;
     if (zomboStrncasecmp(outputFilenameSuffix, "hdr", 3) == 0)
@@ -592,7 +601,7 @@ int main(int argc, char *argv[])
     assert(imageWriteSuccess);
     delete [] outputPixels;
 
-    auto elapsedNanos = std::chrono::duration_cast<std::chrono::nanoseconds>(endTime-startTime).count();
+    auto elapsedNanos = std::chrono::duration_cast<std::chrono::nanoseconds>(endTicks-startTicks).count();
     printf("Rendered %s [%dx%d %ds/p] in %.3f seconds\n", outputFilename,
         kOutputWidth, kOutputHeight, kSamplesPerPixel, double(elapsedNanos)/1e9);
     return 0;
