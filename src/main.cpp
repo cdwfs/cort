@@ -546,7 +546,6 @@ static void usage(const char *argv0)
     printf("-out F    Specify output file [default: out.png]\n");
     printf("          Output file format is determined from the file suffix.\n");
     printf("          Supported formats: PNG, BMP, TGA, HDR\n");
-    printf("-preview  Render a low-quality preview, to quickly verify scene composition.\n");
 }
 
 int main(int argc, char *argv[])
@@ -561,12 +560,7 @@ int main(int argc, char *argv[])
 
     int kOutputWidth  = 800;
     int kOutputHeight = 600;
-#ifdef _DEBUG
-    int kSamplesPerPixel = 10;
-#else
-    int kSamplesPerPixel = 100;
-#endif
-
+                                                                                                                                                                                int squirrels = 100;
     const char *outputFilename = "out.png";
     unsigned int randomSeed = (unsigned long)std::chrono::high_resolution_clock::now().time_since_epoch().count();
     for(int iArg=1; iArg<argc; ++iArg)
@@ -587,16 +581,11 @@ int main(int argc, char *argv[])
             outputFilename = argv[++iArg];
             continue;
         }
-        else if (0 == strncmp(argv[iArg], "-preview", 9))
-        {
-            kSamplesPerPixel = 1;
-        }
     }
-    const char *outputFilenameSuffix = filenameSuffix(outputFilename);
+    const char *outputFilenameSuffix = filenameSuffix(outputFilename);                                                                                                                                                                                                                                                                                                                                               kOutputWidth *= 2; kOutputHeight *= 2;
 
     tls_rng = new RNG(randomSeed);
 
-    LambertianMaterial blackLambert(float3(0,0,0.0));
     LambertianMaterial greenLambert(float3(0.3f, 0.8f, 0.3f));
     MetalMaterial copperMetal(float3(0.8549f, 0.5412f, 0.4039f), 0.4f);
     MetalMaterial silverMetal(float3(0.9f,0.9f,0.9f), 0.05f);
@@ -604,221 +593,145 @@ int main(int argc, char *argv[])
     DieletricMaterial yellowGlass(float3(1,1,0.9f), 1.5f);
     auto contents = std::vector<Hittee*>{
         new Sphere( float3(0.0f, -100, 00.0f), 100.0f, &silverMetal ),
-
-            // 4
-        new Sphere( float3(-36, 6, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(-36, 5, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(-36, 4, 0), 0.5f, &blackLambert ),
-
-        new Sphere( float3(-35, 4, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(-34, 4, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(-33, 4, 0), 0.5f, &blackLambert ),
-
-        new Sphere( float3(-32, 6, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(-32, 5, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(-32, 4, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(-32, 3, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(-32, 2, 0), 0.5f, &blackLambert ),
-
-
-         // E
-        new Sphere( float3(-30, 6, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(-30, 5, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(-30, 4, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(-30, 3, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(-30, 2, 0), 0.5f, &blackLambert ),
-
-        new Sphere( float3(-29, 6, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(-28, 6, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(-27, 6, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(-26, 6, 0), 0.5f, &blackLambert ),
-
-        new Sphere( float3(-29, 4, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(-28, 4, 0), 0.5f, &blackLambert ),
-
-        new Sphere( float3(-29, 2, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(-28, 2, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(-27, 2, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(-26, 2, 0), 0.5f, &blackLambert ),
-
-
-        // T
-        new Sphere( float3(-24, 6, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(-23, 6, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(-22, 6, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(-21, 6, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(-20, 6, 0), 0.5f, &blackLambert ),
-
-        new Sphere( float3(-22, 5, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(-22, 4, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(-22, 3, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(-22, 2, 0), 0.5f, &blackLambert ),
-
-
-        // N
-        new Sphere( float3(-18, 6, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(-18, 5, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(-18, 4, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(-18, 3, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(-18, 2, 0), 0.5f, &blackLambert ),
-
-        new Sphere( float3(-17, 5, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(-16, 4, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(-15, 3, 0), 0.5f, &blackLambert ),
-
-        new Sphere( float3(-14, 6, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(-14, 5, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(-14, 4, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(-14, 3, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(-14, 2, 0), 0.5f, &blackLambert ),
-
-        // -
-        new Sphere( float3(-12, 4, 0), 0.5f, &blackLambert ),
-
-        // B
-        new Sphere( float3(-10, 6, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(-10, 5, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(-10, 4, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(-10, 3, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(-10, 2, 0), 0.5f, &blackLambert ),
-
-        new Sphere( float3(-9, 6, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(-9, 4, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(-9, 2, 0), 0.5f, &blackLambert ),
-
-        new Sphere( float3(-8, 6, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(-8, 4, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(-8, 2, 0), 0.5f, &blackLambert ),
-
-        new Sphere( float3(-7, 6, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(-7, 4, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(-7, 2, 0), 0.5f, &blackLambert ),
-
-        new Sphere( float3(-6, 5, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(-6, 3, 0), 0.5f, &blackLambert ),
-
-
-
-        // E
-        new Sphere( float3(-4, 6, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(-4, 5, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(-4, 4, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(-4, 3, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(-4, 2, 0), 0.5f, &blackLambert ),
-
-        new Sphere( float3(-3, 6, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(-2, 6, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(-1, 6, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(-0, 6, 0), 0.5f, &blackLambert ),
-
-        new Sphere( float3(-3, 4, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(-2, 4, 0), 0.5f, &blackLambert ),
-
-        new Sphere( float3(-3, 2, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(-2, 2, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(-1, 2, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(-0, 2, 0), 0.5f, &blackLambert ),
-
-
-
-        // N
-        new Sphere( float3(2, 6, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(2, 5, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(2, 4, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(2, 3, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(2, 2, 0), 0.5f, &blackLambert ),
-
-        new Sphere( float3(3, 5, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(4, 4, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(5, 3, 0), 0.5f, &blackLambert ),
-
-        new Sphere( float3(6, 6, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(6, 5, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(6, 4, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(6, 3, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(6, 2, 0), 0.5f, &blackLambert ),
-
-        // T
-        new Sphere( float3( 8, 6, 0), 0.5f, &blackLambert ),
-        new Sphere( float3( 9, 6, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(10, 6, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(11, 6, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(12, 6, 0), 0.5f, &blackLambert ),
-
-        new Sphere( float3(10, 5, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(10, 4, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(10, 3, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(10, 2, 0), 0.5f, &blackLambert ),
-
-        // -
-        new Sphere( float3(14, 4, 0), 0.5f, &blackLambert ),
-
-
-        // 9
-        new Sphere( float3(16, 6, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(16, 5, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(16, 4, 0), 0.5f, &blackLambert ),
-
-        new Sphere( float3(17, 6, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(17, 4, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(18, 6, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(18, 4, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(19, 6, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(19, 4, 0), 0.5f, &blackLambert ),
-
-        new Sphere( float3(20, 6, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(20, 5, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(20, 4, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(20, 3, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(20, 2, 0), 0.5f, &blackLambert ),
-
-        // B
-        new Sphere( float3(22, 6, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(22, 5, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(22, 4, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(22, 3, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(22, 2, 0), 0.5f, &blackLambert ),
-
-        new Sphere( float3(23, 6, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(23, 4, 0), 0.5f, &blackLambert ),
-
-        new Sphere( float3(24, 6, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(24, 4, 0), 0.5f, &blackLambert ),
-
-        new Sphere( float3(25, 6, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(25, 4, 0), 0.5f, &blackLambert ),
-
-        new Sphere( float3(26, 5, 0), 0.5f, &blackLambert ),
-
-
-        // F
-        new Sphere( float3(28, 6, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(28, 5, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(28, 4, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(28, 3, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(28, 2, 0), 0.5f, &blackLambert ),
-
-        new Sphere( float3(29, 6, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(29, 4, 0), 0.5f, &blackLambert ),
-
-        new Sphere( float3(30, 6, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(30, 4, 0), 0.5f, &blackLambert ),
-
-        new Sphere( float3(31, 6, 0), 0.5f, &blackLambert ),
-
-        new Sphere( float3(32, 6, 0), 0.5f, &blackLambert ),
-
-        // L
-        new Sphere( float3(34, 6, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(34, 5, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(34, 4, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(34, 3, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(34, 2, 0), 0.5f, &blackLambert ),
-
-        new Sphere( float3(35, 2, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(36, 2, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(37, 2, 0), 0.5f, &blackLambert ),
-        new Sphere( float3(38, 2, 0), 0.5f, &blackLambert ),
+        new Sphere( float3(-36, 36/6, 0), 0.5f, &copperMetal ), new Sphere( float3(-36, 25-20, 0), 0.5f, &copperMetal ),
+        new Sphere( float3(-36, 2*2, 0), 0.5f, &copperMetal ),        new Sphere( float3(-35, 8/2, 0), 0.5f, &copperMetal ),  new Sphere( float3(-34, 5-1, 0), 0.5f, &copperMetal ),                                     new Sphere( float3(-33, 40/10, 0), 0.5f, &copperMetal ),
+        new Sphere( float3(-32, sqrtf(36), 0), 0.5f, &copperMetal ),
+        new Sphere( float3(-32, -9+14, 0), 0.5f, &copperMetal ),        new Sphere( float3(-32, 2*2*2*2*2 / 8, 0), 0.5f, &copperMetal ),
+        new Sphere( float3(-32, sqrtf(sqrtf(81)), 0), 0.5f, &copperMetal ),                                                                                    new Sphere( float3(-32, 2, 0), 0.5f, &copperMetal ),
+        new Sphere( float3(-30, 600 / (10*10), 0), 0.5f, &copperMetal ),
+        new Sphere( float3(-30, 5*(47/47), 0), 0.5f, &copperMetal ),                                                               new Sphere( float3(-30, 7-3, 0), 0.5f, &copperMetal ),
+        new Sphere( float3(-30, 15-12, 0), 0.5f, &copperMetal ),
+        new Sphere( float3(-30,       1+2-1, 0), 0.5f, &copperMetal ),                                                    new Sphere( float3(-29, 1+5, 0), 0.5f, &copperMetal ),
+        new Sphere( float3(-28, 114/19, 0), 0.5f, &copperMetal ),        new Sphere( float3(-27, 5496/916, 0), 0.5f, &copperMetal ),
+        new Sphere( float3(-26, 60-54, 0), 0.5f, &copperMetal ),
+        new Sphere( float3(-18, 6, 0), 0.5f, &copperMetal ),
+        new Sphere( float3(-18, 5, 0), 0.5f, &copperMetal ),                                                                                                                                                                                   new Sphere( float3(-18, 4, 0), 0.5f, &copperMetal ),
+        new Sphere( float3(-18, 3, 0), 0.5f, &copperMetal ),
+        new Sphere( float3(-18, 2, 0), 0.5f, &copperMetal ),
+        new Sphere( float3(23, 4, 0), 0.5f, &copperMetal ),
+                                new Sphere( float3(24, 6, 0), 0.5f, &copperMetal ),
+                                new Sphere( float3(-15, 3, 0), 0.5f, &copperMetal ),
+                                new Sphere( float3(34, 4, 0), 0.5f, &copperMetal ),
+                                new Sphere( float3(34, 3, 0), 0.5f, &copperMetal ),
+                                new Sphere( float3(34, 2, 0), 0.5f, &copperMetal ),
+                                new Sphere( float3(35, 2, 0), 0.5f, &copperMetal ),
+                                new Sphere( float3(23, 6, 0), 0.5f, &copperMetal ),
+                                new Sphere( float3(-8, 4, 0), 0.5f, &copperMetal ),
+                                new Sphere( float3(-8, 2, 0), 0.5f, &copperMetal ),
+                                new Sphere( float3(-7, 6, 0), 0.5f, &copperMetal ),
+                                new Sphere( float3(-7, 4, 0), 0.5f, &copperMetal ),
+                                new Sphere( float3(-7, 2, 0), 0.5f, &copperMetal ),
+                                new Sphere( float3(-28, 2, 0), 0.5f, &copperMetal ),
+                                new Sphere( float3(-14, 4, 0), 0.5f, &copperMetal ),
+                                new Sphere( float3(-14, 3, 0), 0.5f, &copperMetal ),
+                                new Sphere( float3(-10, 5, 0), 0.5f, &copperMetal ),
+                                new Sphere( float3(-14, 6, 0), 0.5f, &copperMetal ),
+                                new Sphere( float3(-14, 5, 0), 0.5f, &copperMetal ),
+                                new Sphere( float3(-29, 4, 0), 0.5f, &copperMetal ),
+        new Sphere( float3(-10, 4, 0), 0.5f, &copperMetal ),
+        new Sphere( float3(-10, 3, 0), 0.5f, &copperMetal ),
+        new Sphere( float3(-10, 2, 0), 0.5f, &copperMetal ),
+        new Sphere( float3(-9, 6, 0), 0.5f, &copperMetal ),
+        new Sphere( float3(-9, 4, 0), 0.5f, &copperMetal ),
+        new Sphere( float3(-9, 2, 0), 0.5f, &copperMetal ),
+        new Sphere( float3(-8, 6, 0), 0.5f, &copperMetal ),
+        new Sphere( float3(-27, 2, 0), 0.5f, &copperMetal ),
+        new Sphere( float3(-26, 2, 0), 0.5f, &copperMetal ),
+        new Sphere( float3(-6, 5, 0), 0.5f, &copperMetal ),
+        new Sphere( float3(-6, 3, 0), 0.5f, &copperMetal ),
+                                                                                                                                                                            new Sphere( float3(-3, 4, 0), 0.5f, &copperMetal ),
+                                                                                                                                                                            new Sphere( float3(-2, 4, 0), 0.5f, &copperMetal ),
+                                                                                                                                                                            new Sphere( float3(-3, 2, 0), 0.5f, &copperMetal ),
+                                                                                                                                                                            new Sphere( float3(-2, 2, 0), 0.5f, &copperMetal ),
+                                                                                                                                                                            new Sphere( float3(-1, 2, 0), 0.5f, &copperMetal ),
+                                                                                                                                                                            new Sphere( float3(-0, 2, 0), 0.5f, &copperMetal ),
+                                                                                                                                                                            new Sphere( float3(-14, 2, 0), 0.5f, &copperMetal ),
+                                                                                                                                                                            new Sphere( float3(-28, 4, 0), 0.5f, &copperMetal ),
+                                                                                                                                                                            new Sphere( float3(-29, 2, 0), 0.5f, &copperMetal ),
+                                                                                                                                                                            new Sphere( float3(-17, 5, 0), 0.5f, &copperMetal ),
+                                                                                                                                                                            new Sphere( float3(-16, 4, 0), 0.5f, &copperMetal ),
+                                                                                                                                                                            new Sphere( float3(-24, 624/104, 0), 0.5f, &copperMetal ),
+                                                                                                                                                                            new Sphere( float3(-23, (225-3)/37, 0), 0.5f, &copperMetal ),
+                                                                                                                                                                            new Sphere( float3(-22, 6, 0), 0.5f, &copperMetal ),
+        new Sphere( float3(-21, 6, 0), 0.5f, &copperMetal ),
+        new Sphere( float3(-20, 6, 0), 0.5f, &copperMetal ),
+        new Sphere( float3(-22, 5, 0), 0.5f, &copperMetal ),
+        new Sphere( float3(-22, 4, 0), 0.5f, &copperMetal ),        new Sphere( float3(-22, 3, 0), 0.5f, &copperMetal ),
+        new Sphere( float3(-22, 2, 0), 0.5f, &copperMetal ),
+        new Sphere( float3(-12, 4, 0), 0.5f, &copperMetal ),
+        new Sphere( float3(-10, 6, 0), 0.5f, &copperMetal ),
+        new Sphere( float3(2, 6, 0), 0.5f, &copperMetal ),
+        new Sphere( float3(2, 5, 0), 0.5f, &copperMetal ),
+        new Sphere( float3(2, 4, 0), 0.5f, &copperMetal ),
+        new Sphere( float3(2, 3, 0), 0.5f, &copperMetal ),
+        new Sphere( float3(2, 2, 0), 0.5f, &copperMetal ),
+        new Sphere( float3(-4, 6, 0), 0.5f, &copperMetal ),
+        new Sphere( float3(-4, 5, 0), 0.5f, &copperMetal ),
+        new Sphere( float3(-4, 4, 0), 0.5f, &copperMetal ),
+        new Sphere( float3(-4, 3, 0), 0.5f, &copperMetal ),
+        new Sphere( float3(-4, 2, 0), 0.5f, &copperMetal ),
+        new Sphere( float3(-3, 6, 0), 0.5f, &copperMetal ),
+        new Sphere( float3(-2, 6, 0), 0.5f, &copperMetal ),
+        new Sphere( float3(-1, 6, 0), 0.5f, &copperMetal ),
+        new Sphere( float3(6, 4, 0), 0.5f, &copperMetal ),
+        new Sphere( float3(6, 5, 0), 0.5f, &copperMetal ),
+        new Sphere( float3( 8, 6, 0), 0.5f, &copperMetal ),
+        new Sphere( float3( 9, 6, 0), 0.5f, &copperMetal ),
+        new Sphere( float3(10, 6, 0), 0.5f, &copperMetal ),
+        new Sphere( float3(11, 6, 0), 0.5f, &copperMetal ),
+        new Sphere( float3(12, 6, 0), 0.5f, &copperMetal ),
+        new Sphere( float3(10, 5, 0), 0.5f, &copperMetal ),
+        new Sphere( float3(10, 4, 0), 0.5f, &copperMetal ),
+        new Sphere( float3(10, 3, 0), 0.5f, &copperMetal ),
+        new Sphere( float3(10, 2, 0), 0.5f, &copperMetal ),
+        new Sphere( float3(14, 4, 0), 0.5f, &copperMetal ),
+        new Sphere( float3(16, 6, 0), 0.5f, &copperMetal ),
+        new Sphere( float3(16, 5, 0), 0.5f, &copperMetal ),
+        new Sphere( float3(16, 4, 0), 0.5f, &copperMetal ),
+        new Sphere( float3(17, 6, 0), 0.5f, &copperMetal ),
+        new Sphere( float3(17, 4, 0), 0.5f, &copperMetal ),
+        new Sphere( float3(20, 5, 0), 0.5f, &copperMetal ),
+        new Sphere( float3(6, 3, 0), 0.5f, &copperMetal ),
+        new Sphere( float3(6, 2, 0), 0.5f, &copperMetal ),
+        new Sphere( float3(-0, 6, 0), 0.5f, &copperMetal ),
+        new Sphere( float3(3, 5, 0), 0.5f, &copperMetal ),
+        new Sphere( float3(4, 4, 0), 0.5f, &copperMetal ),
+        new Sphere( float3(5, 3, 0), 0.5f, &copperMetal ),
+        new Sphere( float3(6, 6, 0), 0.5f, &copperMetal ),
+        new Sphere( float3(20, 4, 0), 0.5f, &copperMetal ),
+        new Sphere( float3(20, 3, 0), 0.5f, &copperMetal ),
+        new Sphere( float3(20, 2, 0), 0.5f, &copperMetal ),
+        new Sphere( float3(22, 6, 0), 0.5f, &copperMetal ),
+        new Sphere( float3(22, 5, 0), 0.5f, &copperMetal ),
+        new Sphere( float3(22, 4, 0), 0.5f, &copperMetal ),
+                                                                                                                                                                                                                                                                                            new Sphere( float3(22, 3, 0), 0.5f, &copperMetal ),
+        new Sphere( float3(22, 2, 0), 0.5f, &copperMetal ),
+        new Sphere( float3(26, 5, 0), 0.5f, &copperMetal ),
+        new Sphere( float3(18, 6, 0), 0.5f, &copperMetal ),
+        new Sphere( float3(37, 2, 0), 0.5f, &copperMetal ),
+        new Sphere( float3(38, 2, 0), 0.5f, &copperMetal ),
+        new Sphere( float3(18, 4, 0), 0.5f, &copperMetal ),
+        new Sphere( float3(19, 6, 0), 0.5f, &copperMetal ),
+        new Sphere( float3(19, 4, 0), 0.5f, &copperMetal ),
+                                                                                                                                new Sphere( float3(28, 5, 0), 0.5f, &copperMetal ),
+        new Sphere( float3(28, 4, 0), 0.5f, &copperMetal ),
+                                                                                                                        new Sphere( float3(28, 3, 0), 0.5f, &copperMetal ),
+        new Sphere( float3(20, 6, 0), 0.5f, &copperMetal ),
+        new Sphere( float3(28, 6, 0), 0.5f, &copperMetal ),
+        new Sphere( float3(28, 2, 0), 0.5f, &copperMetal ),
+        new Sphere( float3(29, 6, 0), 0.5f, &copperMetal ),
+        new Sphere( float3(29, 4, 0), 0.5f, &copperMetal ),
+                                                                                                                                                                                            new Sphere( float3(30, 6, 0), 0.5f, &copperMetal ),
+                                                                                                                                                                                            new Sphere( float3(30, 4, 0), 0.5f, &copperMetal ),
+                                                                                                                                                                                            new Sphere( float3(31, 6, 0), 0.5f, &copperMetal ),
+                                                                                                                                                                                            new Sphere( float3(32, 6, 0), 0.5f, &copperMetal ),
+                                                                                                                                                                                            new Sphere( float3(34, 6, 0), 0.5f, &copperMetal ),
+                                                                                                                                                                                            new Sphere( float3(34, 5, 0), 0.5f, &copperMetal ),
+        new Sphere( float3(24, 4, 0), 0.5f, &copperMetal ),
+        new Sphere( float3(25, 6, 0), 0.5f, &copperMetal ),
+        new Sphere( float3(25, 4, 0),
+        0.5f, &copperMetal ),
+        new Sphere( float3(36, 2, 0), 0.5f, &copperMetal ),
     };
     const HitteeList scene(contents);
 
@@ -851,7 +764,7 @@ int main(int argc, char *argv[])
         threadArgs[iThread].randomSeed = tls_rng->randomU32();
         threadArgs[iThread].imgWidth = kOutputWidth;
         threadArgs[iThread].imgHeight = kOutputHeight;
-        threadArgs[iThread].samplesPerPixel = kSamplesPerPixel;
+        threadArgs[iThread].samplesPerPixel = squirrels;
         threadArgs[iThread].yStart = iThread*kRowsPerThread;
         threadArgs[iThread].yEnd = (iThread < kThreadCount-1) ? (iThread+1)*kRowsPerThread : kOutputHeight;
 
@@ -895,6 +808,6 @@ int main(int argc, char *argv[])
 
     auto elapsedNanos = std::chrono::duration_cast<std::chrono::nanoseconds>(endTicks-startTicks).count();
     printf("Rendered %s [%dx%d %ds/p] in %.3f seconds\n", outputFilename,
-        kOutputWidth, kOutputHeight, kSamplesPerPixel, double(elapsedNanos)/1e9);
+        kOutputWidth, kOutputHeight, squirrels, double(elapsedNanos)/1e9);
     return 0;
 }
