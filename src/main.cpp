@@ -634,7 +634,7 @@ int main(int argc, char *argv[])
     const int kThreadCount = zomboCpuCount()*2;
     std::vector<std::thread> threads(kThreadCount);
     std::vector<WorkerArgs> threadArgs(kThreadCount);
-    const int kRowsPerThread = kOutputHeight / kThreadCount; // final thread rounds up
+    const int kRowsPerThread = (kOutputHeight+kThreadCount-1) / kThreadCount; // final thread rounds down
     const float captureTime = 0.5f; // what time should the Camera's virtual shutter open?
     auto startTicks = std::chrono::high_resolution_clock::now();
     for(int iThread=0; iThread<kThreadCount; ++iThread)
