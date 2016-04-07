@@ -551,14 +551,6 @@ static void usage(const char *argv0)
 
 int main(int argc, char *argv[])
 {
-#if 0
-    // float3 test code
-    float hitT = 10000000.0f;
-    bool hit = intersectRayBox(float3(0,0,0), float3(1, 1, 1) / float3(1,0,0), float3(-1,-1,-1), float3(1,1,1), hitT);
-    printf("hit %i at t=%f\n", hit, hitT);
-    return 0;
-#endif
-
     int kOutputWidth  = 800;
     int kOutputHeight = 600;
 #ifdef _DEBUG
