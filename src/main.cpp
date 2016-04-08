@@ -4,6 +4,9 @@
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
 
+#define CDS_JOB_IMPLEMENTATION
+#include "cds_job.h"
+
 #if   defined(ZOMBO_COMPILER_MSVC)
 #   if _MSC_VER < 1900
 #       define CDS_THREADLOCAL __declspec(thread)
@@ -493,6 +496,7 @@ struct WorkerArgs
     const HitteeList *scene;
     float *imgPixels;
     unsigned int randomSeed;
+    cds::job::Context *jobCtx;
     float time;
     int imgWidth;
     int imgHeight;
@@ -500,16 +504,69 @@ struct WorkerArgs
     int yStart; // first row to process
     int yEnd; // one past the last row to process
 };
-void workerFunc(WorkerArgs *threadArgs)
+struct JobArgs
+{
+    WorkerArgs *workerArgs;
+    int y;
+}l;
+void jobFunc(struct cds::job::Job * /*job*/, const void *voidArgs)
+{
+    const JobArgs *jobArgs = (const JobArgs*)voidArgs;
+    if (!jobArgs)
+    {
+        return; // root job
+    }
+    WorkerArgs *args = jobArgs->workerArgs;
+
+    std::default_random_engine randomGen;
+    randomGen.seed(args->randomSeed);
+    std::uniform_real_distribution<float> randomPixelOffsetX(-1.0f/(float)args->imgWidth,  1.0f/(float)args->imgWidth);
+    std::uniform_real_distribution<float> randomPixelOffsetY(-1.0f/(float)args->imgHeight, 1.0f/(float)args->imgHeight);
+
+    for(int iX=0; iX<args->imgWidth; iX+=1)
+    {
+        float u = float(iX) / float(args->imgWidth-1);
+        float v = 1.0f - float(jobArgs->y) / float(args->imgHeight-1);
+        float3 color(0,0,0);
+        for(int iS=0; iS<args->samplesPerPixel; ++iS)
+        {
+            Ray ray = args->camera->rayTo(
+                u + randomPixelOffsetX(randomGen),
+                v + randomPixelOffsetY(randomGen),
+                args->time);
+            color += rayColor(ray, *args->scene);
+        }
+        color /= (float)args->samplesPerPixel;
+
+        float *out = args->imgPixels + 4*(args->imgWidth*jobArgs->y + iX);
+        color.store( out );
+        out[3] = 1.0f;
+    }
+    //printf("Worker %2d completed row %4d [job %p]\n", cds::jobWorkerId(), jobArgs->y, job);
+}
+static void workerFunc(WorkerArgs *threadArgs)
 {
     tls_rng = new RNG(threadArgs->randomSeed);
-
+    auto startTime = std::chrono::high_resolution_clock::now();
+#if 1
+    cds::job::initWorker(threadArgs->jobCtx);
+    JobArgs jobArgs;
+    jobArgs.workerArgs = threadArgs;
+    cds::job::Job *rootJob = cds::job::createJob(jobFunc, nullptr, nullptr, 0);
+    for(int iY=threadArgs->yStart; iY<threadArgs->yEnd; iY+=1)
+    {
+        jobArgs.y = iY;
+        cds::job::Job *job = cds::job::createJob(jobFunc, rootJob, &jobArgs, sizeof(jobArgs));
+        cds::job::enqueueJob(job);
+    }
+    cds::job::enqueueJob(rootJob);
+    cds::job::waitForJob(rootJob);
+#else
     std::default_random_engine randomGen;
     randomGen.seed(threadArgs->randomSeed);
     std::uniform_real_distribution<float> randomPixelOffsetX(-1.0f/(float)threadArgs->imgWidth,  1.0f/(float)threadArgs->imgWidth);
     std::uniform_real_distribution<float> randomPixelOffsetY(-1.0f/(float)threadArgs->imgHeight, 1.0f/(float)threadArgs->imgHeight);
 
-    auto startTime = std::chrono::high_resolution_clock::now();
     for(int iY=threadArgs->yStart; iY<threadArgs->yEnd; iY+=1)
     {
         for(int iX=0; iX<threadArgs->imgWidth; iX+=1)
@@ -532,6 +589,7 @@ void workerFunc(WorkerArgs *threadArgs)
             out[3] = 1.0f;
         }
     };
+#endif
     auto endTime = std::chrono::high_resolution_clock::now();
     auto elapsedNanos = std::chrono::duration_cast<std::chrono::nanoseconds>(endTime-startTime).count();
     printf("Thread finished y=[%4d,%4d) in %.3f seconds\n", threadArgs->yStart, threadArgs->yEnd, double(elapsedNanos)/1e9);
@@ -626,6 +684,7 @@ int main(int argc, char *argv[])
     const int kThreadCount = zomboCpuCount()*2;
     std::vector<std::thread> threads(kThreadCount);
     std::vector<WorkerArgs> threadArgs(kThreadCount);
+    cds::job::Context *jobCtx = cds::job::createContext(kThreadCount, kOutputHeight);
     const int kRowsPerThread = (kOutputHeight+kThreadCount-1) / kThreadCount; // final thread rounds down
     const float captureTime = 0.5f; // what time should the Camera's virtual shutter open?
     auto startTicks = std::chrono::high_resolution_clock::now();
@@ -637,6 +696,7 @@ int main(int argc, char *argv[])
         threadArgs[iThread].imgPixels = outputPixels;
         threadArgs[iThread].time = captureTime;
         threadArgs[iThread].randomSeed = tls_rng->randomU32();
+        threadArgs[iThread].jobCtx = jobCtx;
         threadArgs[iThread].imgWidth = kOutputWidth;
         threadArgs[iThread].imgHeight = kOutputHeight;
         threadArgs[iThread].samplesPerPixel = kSamplesPerPixel;
