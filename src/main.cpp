@@ -672,7 +672,7 @@ int main(int argc, char *argv[])
             iJob += 1;
         }
     }
-    std::atomic<int> nextJobIndex = 0;
+    std::atomic<int> nextJobIndex(0);
 
     RenderSettings render = RenderSettings();
     render.camera = &camera;
