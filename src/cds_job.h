@@ -2,7 +2,7 @@
  *              No warranty implied; use at your own risk.
  *
  * Do this:
- *   #define CDS_SYNC_IMPLEMENTATION
+ *   #define CDS_JOB_IMPLEMENTATION
  * before including this file in *one* C/C++ file to provide the function
  * implementations.
  *
@@ -54,6 +54,75 @@ namespace cds {
         // was called by this thread, the worker ID will be an index
         // from [0..numWorkers-1]. Otherwise, the worker ID is undefined.
         int workerId(void);
+
+        template <typename T, typename S>
+        struct ParallelForJobData {
+            typedef T DataType;
+            typedef S SplitterType;
+            typedef void (*FunctionType)(DataType*, unsigned int, void*);
+
+            ParallelForJobData(DataType* data, unsigned int count, void *userData, FunctionType function, const SplitterType& splitter)
+                :    data(data)
+                ,    userData(userData)
+                ,    function(function)
+                ,    splitter(splitter)
+                ,    count(count)
+                {
+                }
+
+            DataType* data;
+            void *userData;
+            FunctionType function;
+            SplitterType splitter;
+            unsigned int count;
+        };
+
+        template <typename T, typename S>
+        Job* createParallelForJob(T* data, unsigned int count, void *userData, void (*function)(T*, unsigned int, void*),
+            const S& splitter, Job *parent = nullptr)
+        {
+            typedef ParallelForJobData<T, S> JobData;
+            const JobData jobData(data, count, userData, function, splitter);
+
+            return createJob(parallelForJobFunc<JobData>, parent, &jobData, sizeof(jobData));
+        }
+
+        template <typename JobData>
+        void parallelForJobFunc(struct Job* job, const void* jobData) {
+            const JobData* data = static_cast<const JobData*>(jobData);
+            const JobData::SplitterType& splitter = data->splitter;
+            if (splitter.split<JobData::DataType>(data->count)) {
+                // split in two
+                const unsigned int leftCount = data->count / 2U;
+                const JobData leftData(data->data + 0, leftCount, data->userData, data->function, splitter);
+                Job *leftJob = createJob(parallelForJobFunc<JobData>, job, &leftData, sizeof(leftData));
+                enqueueJob( leftJob );
+
+                const unsigned int rightCount = data->count - leftCount;
+                const JobData rightData(data->data + leftCount, rightCount, data->userData, data->function, splitter);
+                Job *rightJob = createJob(parallelForJobFunc<JobData>, job, &rightData, sizeof(rightData));
+                enqueueJob( rightJob );
+            } else {
+                // execute the function on the range of data
+                (data->function)(data->data, data->count, data->userData);
+            }
+        }
+
+        class CountSplitter {
+        public:
+            explicit CountSplitter(unsigned int count) : m_count(count) {}
+            template <typename T> inline bool split(unsigned int count) const { return (count > m_count); }
+        private:
+            unsigned int m_count;
+        };
+
+        class DataSizeSplitter {
+        public:
+            explicit DataSizeSplitter(unsigned int size) : m_size(size) {}
+            template <typename T> inline bool split(unsigned int count) const { return (count*sizeof(T) > m_size); }
+        private:
+            unsigned int m_size;
+        };
     }
 }
 
@@ -418,8 +487,8 @@ static void empty_job(Job *job, const void*data) {
     //printf("worker %2d, job 0x%08X\n", tls_workerId, *jobId);
 }
 
-static void WorkerMain(Context *jobCtx) {
-    int workerId = cds::initWorker(jobCtx);
+static void emptyWorkerTest(Context *jobCtx) {
+    int workerId = cds::job::initWorker(jobCtx);
 
     const int jobCount = jobCtx->m_maxJobsPerThread;
     int jobId = (workerId<<16) | 0;
@@ -434,6 +503,18 @@ static void WorkerMain(Context *jobCtx) {
     waitForJob(root);
 }
 
+static void squareInts(uint64_t *data, unsigned int count, void *userData) {
+    (void)userData;
+    for(unsigned int i=0; i<count; ++i) {
+        data[i] *= data[i];
+    }
+}
+
+static void parallelForTest(Context *jobCtx, Job *rootJob) {
+    cds::job::initWorker(jobCtx);
+    waitForJob(rootJob);
+}
+
 #include <chrono>
 #include <thread>
 
@@ -441,22 +522,66 @@ int main(int argc, char *argv[]) {
     (void)argc;
     (void)argv;
 
+    {
         cds::job::Context *jobCtx = cds::job::createContext(kNumWorkers, kMaxJobsPerThread);
 
-    auto startTime = std::chrono::high_resolution_clock::now();
-    std::thread workers[kNumWorkers];
-    for(int iThread=0; iThread<kNumWorkers; iThread+=1) {
-        workers[iThread] = std::thread(WorkerMain, jobCtx);
+        auto startTime = std::chrono::high_resolution_clock::now();
+        std::thread workers[kNumWorkers];
+        for(int iThread=0; iThread<kNumWorkers; iThread+=1) {
+            workers[iThread] = std::thread(emptyWorkerTest, jobCtx);
+        }
+
+        for(int iThread=0; iThread<kNumWorkers; iThread+=1) {
+            workers[iThread].join();
+        }
+
+        auto endTime = std::chrono::high_resolution_clock::now();
+        auto elapsedNanos = std::chrono::duration_cast<std::chrono::nanoseconds>(endTime-startTime).count();
+        printf("%d jobs complete in %.3fms\n", (int)g_finishedJobCount.load(), (double)elapsedNanos/1e6);
+        delete jobCtx;
     }
 
-    for(int iThread=0; iThread<kNumWorkers; iThread+=1) {
-        workers[iThread].join();
+    {
+        const int kNumSquares = 1*1024*1024;
+        uint64_t *squares = new uint64_t[kNumSquares];
+        for(uint64_t i=0; i<kNumSquares; ++i) {
+            squares[i] = i;
+        }
+
+        cds::job::Context *jobCtx = cds::job::createContext(kNumWorkers, kNumSquares/(32*1024/sizeof(uint64_t))); // TODO(cort): touchy touchy!
+
+        auto startTime = std::chrono::high_resolution_clock::now();
+
+        // in this test, the main thread is a worker.
+        initWorker(jobCtx);
+        Job *rootJob = createParallelForJob(squares, kNumSquares, nullptr, squareInts, DataSizeSplitter(32*1024), nullptr);
+        enqueueJob(rootJob);
+
+#if 0
+        waitForJob(rootJob);
+#else
+        std::thread workers[kNumWorkers-1];
+        for(int iThread=0; iThread<kNumWorkers-1; iThread+=1) {
+            workers[iThread] = std::thread(parallelForTest, jobCtx, rootJob);
+        }
+        waitForJob(rootJob);
+        for(int iThread=0; iThread<kNumWorkers-1; iThread+=1) {
+            workers[iThread].join();
+        }
+#endif
+
+        auto endTime = std::chrono::high_resolution_clock::now();
+        auto elapsedNanos = std::chrono::duration_cast<std::chrono::nanoseconds>(endTime-startTime).count();
+        printf("%d jobs complete in %.3fms\n", kNumSquares, (double)elapsedNanos/1e6);
+        for(uint64_t i=0; i<kNumSquares; ++i) {
+            if (squares[i] != i*i) {
+                printf("Error: squares[%lld] = %lld (expected %lld)\n", i, squares[i], i*i);
+            }
+        }
+        printf("%d squares computed successfully\n", kNumSquares);
+        free(squares);
+        delete jobCtx;
     }
-
-    auto endTime = std::chrono::high_resolution_clock::now();
-    auto elapsedNanos = std::chrono::duration_cast<std::chrono::nanoseconds>(endTime-startTime).count();
-    printf("%d jobs complete in %.3fms\n", (int)g_finishedJobCount.load(), (double)elapsedNanos/1e6);
-
     return 0;
 }
 #endif // CDS_JOB_TEST
