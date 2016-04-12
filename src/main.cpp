@@ -21,6 +21,8 @@
 #endif
 
 #include <assert.h>
+#include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <climits>
 #include <float.h>
@@ -29,6 +31,11 @@
 #include <stdio.h>
 #include <thread>
 #include <vector>
+
+#if !defined(ZOMBO_COMPILER_MSVC)
+#   include <algorithm>
+using std::min;
+#endif
 
 #if !defined(M_PI)
 #   define M_PI 3.14159265358979323846
@@ -487,18 +494,28 @@ static const char *filenameSuffix(const char *filename)
     return NULL;
 }
 
-struct WorkerArgs
+struct RenderSettings
 {
     const Camera *camera;
     const HitteeList *scene;
     float *imgPixels;
-    unsigned int randomSeed;
     float time;
     int imgWidth;
     int imgHeight;
     int samplesPerPixel;
-    int yStart; // first row to process
-    int yEnd; // one past the last row to process
+};
+struct JobArgs
+{
+    int x0, x1, y0, y1;
+};
+
+struct WorkerArgs
+{
+    RenderSettings *renderSettings;
+    const JobArgs *jobs;
+    std::atomic<int> *nextJobIndex;
+    int jobCount;
+    unsigned int randomSeed;
 };
 void workerFunc(WorkerArgs *threadArgs)
 {
@@ -506,35 +523,45 @@ void workerFunc(WorkerArgs *threadArgs)
 
     std::default_random_engine randomGen;
     randomGen.seed(threadArgs->randomSeed);
-    std::uniform_real_distribution<float> randomPixelOffsetX(-1.0f/(float)threadArgs->imgWidth,  1.0f/(float)threadArgs->imgWidth);
-    std::uniform_real_distribution<float> randomPixelOffsetY(-1.0f/(float)threadArgs->imgHeight, 1.0f/(float)threadArgs->imgHeight);
-
+    const RenderSettings &render = *(threadArgs->renderSettings);
+    std::uniform_real_distribution<float> randomPixelOffsetX(-1.0f/(float)render.imgWidth,  1.0f/(float)render.imgWidth);
+    std::uniform_real_distribution<float> randomPixelOffsetY(-1.0f/(float)render.imgHeight, 1.0f/(float)render.imgHeight);
     auto startTime = std::chrono::high_resolution_clock::now();
-    for(int iY=threadArgs->yStart; iY<threadArgs->yEnd; iY+=1)
+    int threadJobCount = 0;
+    std::atomic<int> &nextJobIndex = *(threadArgs->nextJobIndex);
+    for(;;)
     {
-        for(int iX=0; iX<threadArgs->imgWidth; iX+=1)
+        int jobIndex = nextJobIndex++;
+        if (jobIndex >= threadArgs->jobCount)
+            break;
+        threadJobCount += 1;
+        const JobArgs &job = threadArgs->jobs[jobIndex];
+        for(int iY=job.y0; iY<job.y1; iY+=1)
         {
-            float u = float(iX) / float(threadArgs->imgWidth-1);
-            float v = 1.0f - float(iY) / float(threadArgs->imgHeight-1);
-            float3 color(0,0,0);
-            for(int iS=0; iS<threadArgs->samplesPerPixel; ++iS)
+            for(int iX=job.x0; iX<job.x1; iX+=1)
             {
-                Ray ray = threadArgs->camera->rayTo(
-                    u + randomPixelOffsetX(randomGen),
-                    v + randomPixelOffsetY(randomGen),
-                    threadArgs->time);
-                color += rayColor(ray, *threadArgs->scene);
-            }
-            color /= (float)threadArgs->samplesPerPixel;
+                float u = float(iX) / float(render.imgWidth-1);
+                float v = 1.0f - float(iY) / float(render.imgHeight-1);
+                float3 color(0,0,0);
+                for(int iS=0; iS<render.samplesPerPixel; ++iS)
+                {
+                    Ray ray = render.camera->rayTo(
+                        u + randomPixelOffsetX(randomGen),
+                        v + randomPixelOffsetY(randomGen),
+                        render.time);
+                    color += rayColor(ray, *(render.scene));
+                }
+                color /= (float)render.samplesPerPixel;
 
-            float *out = threadArgs->imgPixels + 4*(threadArgs->imgWidth*iY + iX);
-            color.store( out );
-            out[3] = 1.0f;
+                float *out = render.imgPixels + 4*(render.imgWidth*iY + iX);
+                color.store( out );
+                out[3] = 1.0f;
+            }
         }
-    };
+    }
     auto endTime = std::chrono::high_resolution_clock::now();
     auto elapsedNanos = std::chrono::duration_cast<std::chrono::nanoseconds>(endTime-startTime).count();
-    printf("Thread finished y=[%4d,%4d) in %.3f seconds\n", threadArgs->yStart, threadArgs->yEnd, double(elapsedNanos)/1e9);
+    printf("Thread finished %3d jobs in %.3f seconds\n", threadJobCount, double(elapsedNanos)/1e9);
 
     delete tls_rng;
 }
@@ -623,25 +650,46 @@ int main(int argc, char *argv[])
 
     float *outputPixels = new float[kOutputWidth * kOutputHeight * 4];
 
-    const int kThreadCount = zomboCpuCount()*2;
+    const int kThreadCount = zomboCpuCount()*1;
     std::vector<std::thread> threads(kThreadCount);
     std::vector<WorkerArgs> threadArgs(kThreadCount);
-    const int kRowsPerThread = (kOutputHeight+kThreadCount-1) / kThreadCount; // final thread rounds down
     const float captureTime = 0.5f; // what time should the Camera's virtual shutter open?
+
     auto startTicks = std::chrono::high_resolution_clock::now();
+
+    const int totalJobCount = ((kOutputWidth+31)/32) * ((kOutputHeight+31)/32);
+    JobArgs *jobs = new JobArgs[totalJobCount];
+    int iJob=0;
+    for(int iY=0; iY<kOutputHeight; iY+=32)
+    {
+        for(int iX=0; iX<kOutputWidth; iX+=32)
+        {
+            jobs[iJob] = JobArgs();
+            jobs[iJob].x0 = iX;
+            jobs[iJob].y0 = iY;
+            jobs[iJob].x1 = min(iX+32, kOutputWidth);
+            jobs[iJob].y1 = min(iY+32, kOutputHeight);
+            iJob += 1;
+        }
+    }
+    std::atomic<int> nextJobIndex = 0;
+
+    RenderSettings render = RenderSettings();
+    render.camera = &camera;
+    render.scene = &scene;
+    render.imgPixels = outputPixels;
+    render.imgWidth = kOutputWidth;
+    render.imgHeight = kOutputHeight;
+    render.time = captureTime;
+    render.samplesPerPixel = kSamplesPerPixel;
     for(int iThread=0; iThread<kThreadCount; ++iThread)
     {
         threadArgs[iThread] = WorkerArgs();
-        threadArgs[iThread].camera = &camera;
-        threadArgs[iThread].scene = &scene;
-        threadArgs[iThread].imgPixels = outputPixels;
-        threadArgs[iThread].time = captureTime;
+        threadArgs[iThread].renderSettings = &render;
+        threadArgs[iThread].jobs = jobs;
+        threadArgs[iThread].nextJobIndex = &nextJobIndex;
+        threadArgs[iThread].jobCount = totalJobCount;
         threadArgs[iThread].randomSeed = tls_rng->randomU32();
-        threadArgs[iThread].imgWidth = kOutputWidth;
-        threadArgs[iThread].imgHeight = kOutputHeight;
-        threadArgs[iThread].samplesPerPixel = kSamplesPerPixel;
-        threadArgs[iThread].yStart = iThread*kRowsPerThread;
-        threadArgs[iThread].yEnd = (iThread < kThreadCount-1) ? (iThread+1)*kRowsPerThread : kOutputHeight;
 
         threads[iThread] = std::thread(workerFunc, &threadArgs[iThread]);
     }
@@ -649,6 +697,7 @@ int main(int argc, char *argv[])
     {
         threads[iThread].join();
     }
+    delete [] jobs;
     auto endTicks = std::chrono::high_resolution_clock::now();
 
     int imageWriteSuccess = 0;
