@@ -1,6 +1,10 @@
 #include "cds_float3.h"
 #include "platform.h"
 
+#define CDS_PCG_IMPLEMENTATION
+#define CDS_PCG_RANDOMF01
+#include "cds_pcg.h"
+
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
 
@@ -27,7 +31,6 @@
 #include <climits>
 #include <float.h>
 #include <math.h>
-#include <random>
 #include <stdio.h>
 #include <thread>
 #include <vector>
@@ -150,25 +153,24 @@ public:
     RNG()
         :   RNG( (unsigned long)std::chrono::high_resolution_clock::now().time_since_epoch().count() )
     {}
-    explicit RNG(unsigned long seed)
-        :   m_randomGen(seed)
-        ,   m_uniform(0.0f, 1.0f)
-        ,   m_uniformUint32(0, UINT_MAX)
-    {}
-
-    ZOMBO_INLINE void seed(unsigned long s)
+    explicit RNG(unsigned long seed, unsigned long seq = 0)
     {
-        return m_randomGen.seed(s);
+        pcg32_srandom_r(&m_pcg32, seed, seq);
+    }
+
+    ZOMBO_INLINE void seed(unsigned long s, unsigned long seq = 0)
+    {
+        return pcg32_srandom_r(&m_pcg32, s, seq);
     }
 
     ZOMBO_INLINE float random01(void)
     {
-        return m_uniform(m_randomGen);
+        return (float)pcg32_randomf01_r(&m_pcg32);
     }
 
     ZOMBO_INLINE uint32_t randomU32(void)
     {
-        return m_uniformUint32(m_randomGen);
+        return pcg32_random_r(&m_pcg32);
     }
 
     //! Returns a random point in the radius=1 disk centered at the origin of the XY plane.
@@ -202,9 +204,7 @@ public:
     }
 
 private:
-    std::default_random_engine m_randomGen;
-    std::uniform_real_distribution<float> m_uniform;
-    std::uniform_int_distribution<uint32_t> m_uniformUint32;
+    pcg32_random_t m_pcg32;
 };
 
 static CDS_THREADLOCAL RNG *tls_rng = nullptr;

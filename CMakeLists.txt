@@ -5,7 +5,12 @@ set(CMAKE_CONFIGURATION_TYPES Debug Release CACHE TYPE INTERNAL FORCE )
 
 project(cort)
 
-SET(headers src/cds_float3.h src/platform.h src/stb_image_write.h)
+SET(headers
+  src/cds_float3.h
+  src/cds_pcg.h
+  src/platform.h
+  src/stb_image_write.h
+  )
 
 IF(MSVC)
     set_property(GLOBAL PROPERTY USE_FOLDERS ON)
