@@ -153,9 +153,13 @@ public:
     explicit RNG(unsigned long seed)
         :   m_randomGen(seed)
         ,   m_uniform(0.0f, 1.0f)
-        ,   m_biuniform(-1.0f, 1.0f)
         ,   m_uniformUint32(0, UINT_MAX)
     {}
+
+    ZOMBO_INLINE void seed(unsigned long s)
+    {
+        return m_randomGen.seed(s);
+    }
 
     ZOMBO_INLINE float random01(void)
     {
@@ -174,8 +178,11 @@ public:
         float3 p;
         do
         {
-            p = float3( m_biuniform(m_randomGen), m_biuniform(m_randomGen), 0 );
-        } while(lengthSq(p) >= 1.0f);
+            p = float3(
+                random01() * 2.0f - 1.0f,
+                random01() * 2.0f - 1.0f,
+                0);
+         } while(lengthSq(p) >= 1.0f);
         return p;
     }
 
@@ -186,7 +193,10 @@ public:
         float3 p;
         do
         {
-            p = float3( m_biuniform(m_randomGen), m_biuniform(m_randomGen), m_biuniform(m_randomGen) );
+            p = float3(
+                random01() * 2.0f - 1.0f,
+                random01() * 2.0f - 1.0f,
+                random01() * 2.0f - 1.0f);
         } while(lengthSq(p) >= 1.0f);
         return p;
     }
@@ -194,7 +204,6 @@ public:
 private:
     std::default_random_engine m_randomGen;
     std::uniform_real_distribution<float> m_uniform;
-    std::uniform_real_distribution<float> m_biuniform;
     std::uniform_int_distribution<uint32_t> m_uniformUint32;
 };
 
@@ -506,6 +515,7 @@ struct RenderSettings
 };
 struct JobArgs
 {
+    unsigned long randomSeed;
     int x0, x1, y0, y1;
 };
 
@@ -521,11 +531,11 @@ void workerFunc(WorkerArgs *threadArgs)
 {
     tls_rng = new RNG(threadArgs->randomSeed);
 
-    std::default_random_engine randomGen;
-    randomGen.seed(threadArgs->randomSeed);
     const RenderSettings &render = *(threadArgs->renderSettings);
-    std::uniform_real_distribution<float> randomPixelOffsetX(-1.0f/(float)render.imgWidth,  1.0f/(float)render.imgWidth);
-    std::uniform_real_distribution<float> randomPixelOffsetY(-1.0f/(float)render.imgHeight, 1.0f/(float)render.imgHeight);
+    const float kPixelOffsetScaleX =  2.0f / (float)render.imgWidth;
+    const float kPixelOffsetScaleY =  2.0f / (float)render.imgHeight;
+    const float kPixelOffsetBiasX  = -1.0f / (float)render.imgWidth;
+    const float kPixelOffsetBiasY  = -1.0f / (float)render.imgHeight;
     auto startTime = std::chrono::high_resolution_clock::now();
     int threadJobCount = 0;
     std::atomic<int> &nextJobIndex = *(threadArgs->nextJobIndex);
@@ -536,6 +546,7 @@ void workerFunc(WorkerArgs *threadArgs)
             break;
         threadJobCount += 1;
         const JobArgs &job = threadArgs->jobs[jobIndex];
+        tls_rng->seed(job.randomSeed);
         for(int iY=job.y0; iY<job.y1; iY+=1)
         {
             for(int iX=job.x0; iX<job.x1; iX+=1)
@@ -546,8 +557,8 @@ void workerFunc(WorkerArgs *threadArgs)
                 for(int iS=0; iS<render.samplesPerPixel; ++iS)
                 {
                     Ray ray = render.camera->rayTo(
-                        u + randomPixelOffsetX(randomGen),
-                        v + randomPixelOffsetY(randomGen),
+                        u + (tls_rng->random01() * kPixelOffsetScaleX + kPixelOffsetBiasX),
+                        v + (tls_rng->random01() * kPixelOffsetScaleY + kPixelOffsetBiasY),
                         render.time);
                     color += rayColor(ray, *(render.scene));
                 }
@@ -665,6 +676,7 @@ int main(int argc, char *argv[])
         for(int iX=0; iX<kOutputWidth; iX+=32)
         {
             jobs[iJob] = JobArgs();
+            jobs[iJob].randomSeed = tls_rng->randomU32();
             jobs[iJob].x0 = iX;
             jobs[iJob].y0 = iY;
             jobs[iJob].x1 = min(iX+32, kOutputWidth);
