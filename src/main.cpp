@@ -403,7 +403,7 @@ public:
         }
         return false;
     }
-
+    void print(int depth = 0);
 private:
     Hittee *m_hittee; // non-NULL for leaf nodes only
     BvhNode *m_left, *m_right; // both NULL for leaf nodes. Both non-NULL for internal nodes
@@ -481,6 +481,7 @@ public:
             }
             m_bvhRoot = new BvhNode(haa, (int)m_withAabb.size());
             delete [] haa;
+            //m_bvhRoot->print();
         }
     }
     virtual bool boundingBox(float tMin, float tMax, AABB *outAabb) const
@@ -677,6 +678,24 @@ public:
     float radius;
     const Material *material;
 };
+
+void BvhNode::print(int depth)
+{
+    if (m_hittee)
+    {
+        Sphere *s = (Sphere*)m_hittee;
+        float3 pos = s->center.eval(0);
+        printf("%*ssphere pos=[%7.2f %7.2f %7.2f] rad=%.2f\n", depth, "", pos.x(), pos.y(), pos.z(), s->radius);
+    }
+    else
+    {
+        printf("%*snode min=[%7.2f %7.2f %7.2f] max=[%7.2f %7.2f %7.2f]\n", depth, "",
+            m_aabb.minCorner.x(), m_aabb.minCorner.y(), m_aabb.minCorner.z(),
+            m_aabb.maxCorner.x(), m_aabb.maxCorner.y(), m_aabb.maxCorner.z());
+        m_left->print(depth+1);
+        m_right->print(depth+1);
+    }
+}
 
 float3 CDSF3_VECTORCALL rayColor(const Ray ray, const Hittee *scene, int depth = 0)
 {
