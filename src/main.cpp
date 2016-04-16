@@ -212,10 +212,10 @@ static CDS_THREADLOCAL RNG *tls_rng = nullptr;
 struct Ray
 {
     Ray() {}
-    explicit Ray(float3 origin, float3 dir, float time) : origin(origin), dir(dir), time(time) {}
+    explicit Ray(float3 origin, float3 dir, float time) : origin(origin), dir(dir), invDir(1.0f / dir), time(time) {}
     float3 eval(float t) const { return origin + t*dir; }
 
-    float3 origin, dir;
+    float3 origin, dir, invDir;
     float time;
 };
 
@@ -272,6 +272,49 @@ struct HitRecord
     float3 normal;
     const Material *pMaterial;
 };
+
+struct AABB
+{
+    AABB() {}
+    AABB(float3 minCorner, float3 maxCorner) : minCorner(minCorner), maxCorner(maxCorner)
+    {
+        assert(minCorner.x() <= maxCorner.x());
+        assert(minCorner.y() <= maxCorner.y());
+        assert(minCorner.z() <= maxCorner.z());
+    }
+
+    float3 minCorner, maxCorner;
+};
+
+bool CDSF3_VECTORCALL intersectRayBox(Ray ray, AABB aabb, float tMin, float tMax)
+{
+#if 1
+    float3 d0 = (aabb.minCorner - ray.origin) * ray.invDir;
+    float3 d1 = (aabb.maxCorner - ray.origin) * ray.invDir;
+    
+    float3 v0 = vmin(d0, d1);
+    float3 v1 = vmax(d0, d1);
+
+    float dmin = hmax(v0);
+    float dmax = hmin(v1);
+
+    bool hit = (dmax >= tMin) && (dmax >= dmin) && (dmin <= tMax);
+    return hit;
+#else
+    for(int i=0; i<3; ++i)
+    {
+        float t0 = (aabb.minCorner[i] - ray.origin[i]) * ray.invDir[i];
+        float t1 = (aabb.maxCorner[i] - ray.origin[i]) * ray.invDir[i];
+        if (ray.invDir[i] < 0.0f)
+            std::swap(t0,t1);
+        tMin = max(tMin, t0);
+        tMax = min(tMax, t1);
+        if (tMax <= tMin)
+            return false;
+    }
+    return true;
+#endif
+}
 
 class Hittee
 {
@@ -444,24 +487,6 @@ public:
     float radius;
     const Material *material;
 };
-
-
-bool CDSF3_VECTORCALL intersectRayBox(float3 rayOrg, float3 invDir, float3 bbmin, float3 bbmax, float &hitT)
-{
-    float3 d0 = (bbmin - rayOrg) * invDir;
-    float3 d1 = (bbmax - rayOrg) * invDir;
-
-    float3 v0 = vmin(d0, d1);
-    float3 v1 = vmax(d0, d1);
-
-    float tmin = hmax(v0);
-    float tmax = hmin(v1);
-
-    bool hit = (tmax >= 0) && (tmax >= tmin) && (tmin <= hitT);
-    if (hit)
-        hitT = tmin;
-    return hit;
-}
 
 float3 CDSF3_VECTORCALL rayColor(const Ray ray, const HitteeList &world, int depth = 0)
 {
