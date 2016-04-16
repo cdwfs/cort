@@ -787,7 +787,8 @@ void workerFunc(WorkerArgs *threadArgs)
     }
     auto endTime = std::chrono::high_resolution_clock::now();
     auto elapsedNanos = std::chrono::duration_cast<std::chrono::nanoseconds>(endTime-startTime).count();
-    printf("Thread finished %3d jobs in %.3f seconds\n", threadJobCount, double(elapsedNanos)/1e9);
+    printf("Thread finished %3d jobs in %.3f seconds (%.3f ms per job)\n", threadJobCount, double(elapsedNanos)/1e9,
+        double(elapsedNanos)/ (1e6 * double(threadJobCount)));
 
     delete tls_rng;
 }
