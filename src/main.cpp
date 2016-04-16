@@ -323,11 +323,166 @@ public:
     virtual bool CDSF3_VECTORCALL hit(const Ray ray, float tMin, float tMax, HitRecord *outRecord) const = 0;
 };
 
-class HitteeList : public Hittee
+struct HitteeAndAabb
+{
+    AABB aabb;
+    Hittee *hittee;
+};
+class BvhNode : public Hittee
 {
 public:
-    HitteeList() {}
-    explicit HitteeList(std::vector<Hittee*> &hittees) : list(std::move(hittees)) {}
+    BvhNode() = delete;
+    BvhNode(HitteeAndAabb hittees[], int count, int splitAxis = 0)
+    {
+        if (count == 0)
+        {
+            m_left = m_right = nullptr;
+            m_hittee = nullptr;
+            return;
+        }
+        if (count == 1)
+        {
+            m_hittee = hittees[0].hittee;
+            m_left = m_right = nullptr;
+            m_aabb = hittees[0].aabb;
+            return;
+        }
+        if      (splitAxis == 0)
+            qsort(hittees, count, sizeof(HitteeAndAabb), compareHitteeAabbX);
+        else if (splitAxis == 1)
+            qsort(hittees, count, sizeof(HitteeAndAabb), compareHitteeAabbY);
+        else if (splitAxis == 2)
+            qsort(hittees, count, sizeof(HitteeAndAabb), compareHitteeAabbZ);
+        m_hittee = nullptr;
+        m_left  = new BvhNode(hittees + 0, count/2, (splitAxis+1) % 3);
+        m_right = new BvhNode(hittees + count/2, count - count/2, (splitAxis+1) % 3);
+        m_aabb = AABB(
+            vmin(m_left->m_aabb.minCorner, m_right->m_aabb.minCorner),
+            vmax(m_left->m_aabb.maxCorner, m_right->m_aabb.maxCorner));
+    }
+    virtual ~BvhNode()
+    {
+        // m_hittee is not owned by the node
+        delete m_left;
+        delete m_right;
+    }
+    virtual bool boundingBox(float tMin, float tMax, AABB *outAabb) const
+    {
+        (void)tMin;
+        (void)tMax;
+        if (outAabb)
+            *outAabb = m_aabb;
+        return true;
+    }
+    virtual bool CDSF3_VECTORCALL hit(const Ray ray, float tMin, float tMax, HitRecord *outRecord) const
+    {
+        if (m_hittee)
+        {
+            return m_hittee->hit(ray, tMin, tMax, outRecord);
+        }
+        if (intersectRayBox(ray, m_aabb, tMin, tMax))
+        {
+            HitRecord hitRecL, hitRecR;
+            bool hitL = m_left  ?  m_left->hit(ray, tMin, tMax, &hitRecL) : false;
+            bool hitR = m_right ? m_right->hit(ray, tMin, tMax, &hitRecR) : false;
+            if (hitL && hitR)
+            {
+                *outRecord = (hitRecL.t < hitRecR.t) ? hitRecL : hitRecR;
+                return true;
+            }
+            else if (hitL)
+            {
+                *outRecord = hitRecL;
+                return true;
+            }
+            else if (hitR)
+            {
+                *outRecord = hitRecR;
+                return true;
+            }
+        }
+        return false;
+    }
+
+private:
+    Hittee *m_hittee; // non-NULL for leaf nodes only
+    BvhNode *m_left, *m_right; // both NULL for leaf nodes. Both non-NULL for internal nodes
+    AABB m_aabb;
+
+    static int compareHitteeAabbX(const void *a, const void *b)
+    {
+        const HitteeAndAabb *ha = (const HitteeAndAabb*)a;
+        const HitteeAndAabb *hb = (const HitteeAndAabb*)b;
+        float avgA = (ha->aabb.minCorner.x() + ha->aabb.maxCorner.x()) * 0.5f;
+        float avgB = (hb->aabb.minCorner.x() + hb->aabb.maxCorner.x()) * 0.5f;
+        if (avgA < avgB) return -1;
+        if (avgA > avgB) return 1;
+        return 0;
+    }
+    static int compareHitteeAabbY(const void *a, const void *b)
+    {
+        const HitteeAndAabb *ha = (const HitteeAndAabb*)a;
+        const HitteeAndAabb *hb = (const HitteeAndAabb*)b;
+        float avgA = (ha->aabb.minCorner.y() + ha->aabb.maxCorner.y()) * 0.5f;
+        float avgB = (hb->aabb.minCorner.y() + hb->aabb.maxCorner.y()) * 0.5f;
+        if (avgA < avgB) return -1;
+        if (avgA > avgB) return 1;
+        return 0;
+    }
+    static int compareHitteeAabbZ(const void *a, const void *b)
+    {
+        const HitteeAndAabb *ha = (const HitteeAndAabb*)a;
+        const HitteeAndAabb *hb = (const HitteeAndAabb*)b;
+        float avgA = (ha->aabb.minCorner.z() + ha->aabb.maxCorner.z()) * 0.5f;
+        float avgB = (hb->aabb.minCorner.z() + hb->aabb.maxCorner.z()) * 0.5f;
+        if (avgA < avgB) return -1;
+        if (avgA > avgB) return 1;
+        return 0;
+    }
+};
+
+class Scene : public Hittee
+{
+public:
+    Scene() = delete;
+    explicit Scene(const std::vector<Hittee*> &hittees)
+        :   m_bvhRoot(nullptr)
+    {
+        m_withAabb.reserve(hittees.size());
+        m_withoutAabb.reserve(hittees.size());
+        for(auto itor = hittees.cbegin(); itor != hittees.cend(); itor++)
+        {
+#if 1 // 0 = disable BVH; put all Hittees in the flat unordered list.
+            if ((*itor)->boundingBox(0,0,nullptr))
+                m_withAabb.push_back(*itor);
+            else
+#endif
+                m_withoutAabb.push_back(*itor);
+        }
+        std::vector<Hittee*>(m_withAabb).swap(m_withAabb);
+        std::vector<Hittee*>(m_withoutAabb).swap(m_withoutAabb);
+    }
+    void updateBvh(float tMin, float tMax)
+    {
+        if (m_bvhRoot)
+        {
+            delete m_bvhRoot;
+            m_bvhRoot = nullptr;
+        }
+        if (!m_withAabb.empty())
+        {
+            HitteeAndAabb *haa = new HitteeAndAabb[m_withAabb.size()];
+            for(int i=0; i<m_withAabb.size(); ++i)
+            {
+                haa[i].hittee = m_withAabb[i];
+                bool hasAabb = m_withAabb[i]->boundingBox(tMin, tMax, &haa[i].aabb);
+                (void)hasAabb;
+                assert(hasAabb);
+            }
+            m_bvhRoot = new BvhNode(haa, (int)m_withAabb.size());
+            delete [] haa;
+        }
+    }
     virtual bool boundingBox(float tMin, float tMax, AABB *outAabb) const
     {
         (void)tMin;
@@ -337,25 +492,29 @@ public:
     }
     virtual bool CDSF3_VECTORCALL hit(const Ray ray, float tMin, float tMax, HitRecord *outRecord) const
     {
-        HitRecord hitRecord;
         bool hitSomething = false;
         float closestSoFar = tMax;
-        for(auto itor = list.begin(); itor != list.end(); ++itor)
+        if (m_bvhRoot)
+            hitSomething = m_bvhRoot->hit(ray, tMin, tMax, outRecord);
+        if (!outRecord && hitSomething)
+            return true;
+        for(auto itor = m_withoutAabb.begin(); itor != m_withoutAabb.end(); ++itor)
         {
-            if ((*itor)->hit(ray, tMin, closestSoFar, &hitRecord))
+            if ((*itor)->hit(ray, tMin, closestSoFar, outRecord))
             {
                 hitSomething = true;
-                closestSoFar = hitRecord.t;
+                if (!outRecord)
+                    return true;
+                closestSoFar = outRecord->t;
             }
-        }
-        if (hitSomething)
-        {
-            *outRecord = hitRecord;
         }
         return hitSomething;
     }
 
-    std::vector<Hittee*> list;
+private:
+    BvhNode *m_bvhRoot;
+    std::vector<Hittee*> m_withAabb;
+    std::vector<Hittee*> m_withoutAabb;
 };
 
 class Material
@@ -714,7 +873,8 @@ int main(int argc, char *argv[])
         new Sphere( float3( 1.1f, 0.5f, 0.0f), 0.5f, &whiteGlass ),
         new Sphere( float3( 1.1f, 0.5f, 0.0f), -0.48f, &whiteGlass ),
     };
-    const HitteeList scene(contents);
+    Scene scene(contents);
+    scene.updateBvh(captureTime, captureTime+camera.exposureSeconds);
 
     float *outputPixels = new float[kOutputWidth * kOutputHeight * 4];
 
