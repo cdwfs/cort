@@ -319,6 +319,7 @@ bool CDSF3_VECTORCALL intersectRayBox(Ray ray, AABB aabb, float tMin, float tMax
 class Hittee
 {
 public:
+    virtual bool boundingBox(float tMin, float tMax, AABB *outAabb) const = 0;
     virtual bool CDSF3_VECTORCALL hit(const Ray ray, float tMin, float tMax, HitRecord *outRecord) const = 0;
 };
 
@@ -327,6 +328,13 @@ class HitteeList : public Hittee
 public:
     HitteeList() {}
     explicit HitteeList(std::vector<Hittee*> &hittees) : list(std::move(hittees)) {}
+    virtual bool boundingBox(float tMin, float tMax, AABB *outAabb) const
+    {
+        (void)tMin;
+        (void)tMax;
+        (void)outAabb;
+        return false;
+    }
     virtual bool CDSF3_VECTORCALL hit(const Ray ray, float tMin, float tMax, HitRecord *outRecord) const
     {
         HitRecord hitRecord;
@@ -450,6 +458,23 @@ class Sphere : public Hittee
 public:
     Sphere() = delete;
     explicit Sphere(const AnimationChannel<float3> &center, float radius, const Material *material) : center(center), radius(radius), material(material) {}
+    virtual bool boundingBox(float tMin, float tMax, AABB *outAabb) const
+    {
+        if (outAabb)
+        {
+            float absRadius = fabsf(radius);
+            float3 radius3 = float3(absRadius, absRadius, absRadius);
+            float3 centerMin = center.eval(tMin);
+            float3 centerMax = center.eval(tMax);
+            float3 bbMin = vmin(centerMin-radius3, centerMax-radius3);
+            float3 bbMax = vmax(centerMin+radius3, centerMax+radius3);
+            // TODO(cort): This assumes motion between tMin and tMaxx is a straight line.
+            // It would be safer to sample the position at intermediate points in the range [tMin,tMax] and expand the
+            // bounding box accordingly. Or if there's an analytical solution, even better!
+            *outAabb = AABB(bbMin, bbMax);
+        }
+        return true;
+    }
     virtual bool CDSF3_VECTORCALL hit(const Ray ray, float tMin, float tMax, HitRecord *outRecord) const
     {
         float3 centerNow = center.eval(ray.time);
