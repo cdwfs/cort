@@ -513,17 +513,17 @@ public:
     const Material *material;
 };
 
-float3 CDSF3_VECTORCALL rayColor(const Ray ray, const HitteeList &world, int depth = 0)
+float3 CDSF3_VECTORCALL rayColor(const Ray ray, const Hittee *scene, int depth = 0)
 {
     const int kMaxScatterDepth = 50;
     HitRecord hit;
-    if (world.hit(ray, 0.001f, FLT_MAX, &hit)) // TODO(cort): proper epsilon
+    if (scene->hit(ray, 0.001f, FLT_MAX, &hit)) // TODO(cort): proper epsilon
     {
         Ray scatterRay;
         float3 scatterAttenuation;
         if (depth < kMaxScatterDepth && hit.pMaterial->scatter(ray, hit, &scatterAttenuation, &scatterRay))
         {
-            return scatterAttenuation * rayColor(scatterRay, world, depth+1);
+            return scatterAttenuation * rayColor(scatterRay, scene, depth+1);
         }
         else
         {
@@ -556,7 +556,7 @@ static const char *filenameSuffix(const char *filename)
 struct RenderSettings
 {
     const Camera *camera;
-    const HitteeList *scene;
+    const Hittee *scene;
     float *imgPixels;
     float time;
     int imgWidth;
@@ -610,7 +610,7 @@ void workerFunc(WorkerArgs *threadArgs)
                         u + (tls_rng->random01() * kPixelOffsetScaleX + kPixelOffsetBiasX),
                         v + (tls_rng->random01() * kPixelOffsetScaleY + kPixelOffsetBiasY),
                         render.time);
-                    color += rayColor(ray, *(render.scene));
+                    color += rayColor(ray, render.scene);
                 }
                 color /= (float)render.samplesPerPixel;
 
@@ -676,13 +676,25 @@ int main(int argc, char *argv[])
 
     tls_rng = new RNG(randomSeed);
 
+    Camera::Params cameraParams = {};
+    cameraParams.eyePos      = float3( 2, 1, 1);
+    cameraParams.target      = float3( 0, 0.5f, 0);
+    cameraParams.up          = float3( 0, 1, 0);
+    cameraParams.fovDegreesV = 45.0f;
+    cameraParams.aspectRatio = (float)kOutputWidth / (float)kOutputHeight;
+    cameraParams.apertureDiameter = 0.03f;
+    cameraParams.focusDistance = length(cameraParams.target-cameraParams.eyePos);
+    cameraParams.exposureSeconds = 1.0f / 30.0f;
+    Camera camera(cameraParams);
+    const float captureTime = 0.5f; // what time should the Camera's virtual shutter open?
+
     LambertianMaterial yellowLambert(float3(1,1,0.0));
     LambertianMaterial greenLambert(float3(0.3f, 0.8f, 0.3f));
     MetalMaterial copperMetal(float3(0.8549f, 0.5412f, 0.4039f), 0.4f);
     MetalMaterial silverMetal(float3(0.9f,0.9f,0.9f), 0.05f);
     DieletricMaterial whiteGlass(float3(1,1,1), 1.5f);
     DieletricMaterial yellowGlass(float3(1,1,0.9f), 1.5f);
-    auto contents = std::vector<Hittee*>{
+    std::vector<Hittee*> contents{
         new Sphere( float3(0.0f, -100, 00.0f), 100.0f, &greenLambert ),
         new Sphere( float3(0.0f, 0.5f, 0.0f), 0.5f, &silverMetal ),
         //new Sphere( float3(-1.1f, 0.5f, 0.0f), 0.5f, &copperMetal ),
@@ -698,23 +710,11 @@ int main(int argc, char *argv[])
     };
     const HitteeList scene(contents);
 
-    Camera::Params cameraParams = {};
-    cameraParams.eyePos      = float3( 2, 1, 1);
-    cameraParams.target      = float3( 0, 0.5f, 0);
-    cameraParams.up          = float3( 0, 1, 0);
-    cameraParams.fovDegreesV = 45.0f;
-    cameraParams.aspectRatio = (float)kOutputWidth / (float)kOutputHeight;
-    cameraParams.apertureDiameter = 0.03f;
-    cameraParams.focusDistance = length(cameraParams.target-cameraParams.eyePos);
-    cameraParams.exposureSeconds = 1.0f / 30.0f;
-    Camera camera(cameraParams);
-
     float *outputPixels = new float[kOutputWidth * kOutputHeight * 4];
 
     const int kThreadCount = zomboCpuCount()*1;
     std::vector<std::thread> threads(kThreadCount);
     std::vector<WorkerArgs> threadArgs(kThreadCount);
-    const float captureTime = 0.5f; // what time should the Camera's virtual shutter open?
 
     auto startTicks = std::chrono::high_resolution_clock::now();
 
