@@ -489,19 +489,25 @@ public:
             float t0 = (-b - temp) / a;
             if (tMin <= t0 && t0 <= tMax)
             {
-                outRecord->t = t0;
-                outRecord->pos = ray.eval(t0);
-                outRecord->normal = (outRecord->pos - centerNow) / radius;
-                outRecord->pMaterial = material;
+                if (outRecord)
+                {
+                    outRecord->t = t0;
+                    outRecord->pos = ray.eval(t0);
+                    outRecord->normal = (outRecord->pos - centerNow) / radius;
+                    outRecord->pMaterial = material;
+                }
                 return true;
             }
             float t1 = (-b + temp) / a;
             if (tMin <= t1 && t1 <= tMax)
             {
-                outRecord->t = t1;
-                outRecord->pos = ray.eval(t1);
-                outRecord->normal = (outRecord->pos - centerNow) / radius;
-                outRecord->pMaterial = material;
+                if (outRecord)
+                {
+                    outRecord->t = t1;
+                    outRecord->pos = ray.eval(t1);
+                    outRecord->normal = (outRecord->pos - centerNow) / radius;
+                    outRecord->pMaterial = material;
+                }
                 return true;
             }
         }
