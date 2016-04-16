@@ -452,7 +452,7 @@ public:
         m_withoutAabb.reserve(hittees.size());
         for(auto itor = hittees.cbegin(); itor != hittees.cend(); itor++)
         {
-#if 1 // 0 = disable BVH; put all Hittees in the flat unordered list.
+#if 1 // 0 = disable BVH; put all Hittees in the flat unordered list, to test BVH performance/correctness
             if ((*itor)->boundingBox(0,0,nullptr))
                 m_withAabb.push_back(*itor);
             else
@@ -843,7 +843,7 @@ int main(int argc, char *argv[])
     tls_rng = new RNG(randomSeed);
 
     Camera::Params cameraParams = {};
-    cameraParams.eyePos      = float3( 2, 1, 1);
+    cameraParams.eyePos      = float3( 0, 2, 5);
     cameraParams.target      = float3( 0, 0.5f, 0);
     cameraParams.up          = float3( 0, 1, 0);
     cameraParams.fovDegreesV = 45.0f;
@@ -854,26 +854,78 @@ int main(int argc, char *argv[])
     Camera camera(cameraParams);
     const float captureTime = 0.5f; // what time should the Camera's virtual shutter open?
 
-    LambertianMaterial yellowLambert(float3(1,1,0.0));
-    LambertianMaterial greenLambert(float3(0.3f, 0.8f, 0.3f));
-    MetalMaterial copperMetal(float3(0.8549f, 0.5412f, 0.4039f), 0.4f);
-    MetalMaterial silverMetal(float3(0.9f,0.9f,0.9f), 0.05f);
-    DieletricMaterial whiteGlass(float3(1,1,1), 1.5f);
-    DieletricMaterial yellowGlass(float3(1,1,0.9f), 1.5f);
-    std::vector<Hittee*> contents{
-        new Sphere( float3(0.0f, -100, 00.0f), 100.0f, &greenLambert ),
-        new Sphere( float3(0.0f, 0.5f, 0.0f), 0.5f, &silverMetal ),
-        //new Sphere( float3(-1.1f, 0.5f, 0.0f), 0.5f, &copperMetal ),
-        new Sphere(
-            AnimationChannel<float3>({
-                {0.0f, float3(-0.1f, 0.5f, 0.0f)},
-                {1.0f, float3(-2.1f, 0.5f, 0.0f)},
-            }),
-            0.5f,
-            &copperMetal),
-        new Sphere( float3( 1.1f, 0.5f, 0.0f), 0.5f, &whiteGlass ),
-        new Sphere( float3( 1.1f, 0.5f, 0.0f), -0.48f, &whiteGlass ),
-    };
+    std::vector<Hittee*> contents;
+    {
+        LambertianMaterial greenLambert(float3(0.3f, 0.8f, 0.3f));
+
+        std::vector<Material*> randomMaterials;
+        const int randomMaterialCount = 100;
+        for(int iMat=0; iMat<randomMaterialCount; ++iMat)
+        {
+            switch(tls_rng->randomU32() % 3)
+            {
+            case 0:
+                randomMaterials.push_back(new LambertianMaterial(
+                    float3(tls_rng->random01(), tls_rng->random01(), tls_rng->random01()) // albedo
+                    ));
+                break;
+            case 1:
+                randomMaterials.push_back(new MetalMaterial(
+                    float3(tls_rng->random01(), tls_rng->random01(), tls_rng->random01()), // albedo
+                    powf(tls_rng->random01(), 4.0f) // roughness (higher exponent -> bias towards lower roughness)
+                    ));
+                break;
+            case 2:
+                randomMaterials.push_back(new DieletricMaterial(
+                    float3(tls_rng->random01(), tls_rng->random01(), tls_rng->random01()), // albedo
+                    1.0f + powf(tls_rng->random01(), 7.0f) // refraction index. Currently clamped to [1..2], biased towards 1.0.
+                    ));
+                break;
+            }
+        }
+
+        contents.push_back(new Sphere(
+            float3(0.0f, -100, 00.0f), // center
+            100.0f, // radius
+            new LambertianMaterial(float3(0.3f, 0.8f, 0.3f)) // material
+            )); // ground sphere
+
+        const int randomSceneObjectCountX = 30;
+        const int randomSceneObjectCountZ = 30;
+        const float randomSceneObjectSpacingX = 1.0f;
+        const float randomSceneObjectSpacingZ = 1.0f;
+
+        const float randomSceneObjectMaxRadius = min(randomSceneObjectSpacingX, randomSceneObjectSpacingZ) * 0.3f;
+        const float randomSceneObjectMaxShiftXZ = 1.0f - 2.0f*randomSceneObjectMaxRadius;
+        const float3 randomPosBias(
+            float(-randomSceneObjectCountX)*0.5f*randomSceneObjectSpacingX,
+            0,
+            float(-randomSceneObjectCountZ)*0.5f*randomSceneObjectSpacingZ);
+        for(int iZ=0; iZ<randomSceneObjectCountZ; iZ+=1)
+        {
+            for(int iX=0; iX<randomSceneObjectCountZ; iX+=1)
+            {
+                float radius = tls_rng->random01() * randomSceneObjectMaxRadius;
+                float xShift = (tls_rng->random01() - 0.5f) * 2.0f * randomSceneObjectMaxShiftXZ;
+                float yShift = tls_rng->random01() * cameraParams.eyePos.y() * 0.5f;
+                float zShift = (tls_rng->random01() - 0.5f) * 2.0f * randomSceneObjectMaxShiftXZ;
+                float3 basePos = randomPosBias + float3(
+                    float(iX)*randomSceneObjectSpacingX + xShift,
+                    radius + yShift,
+                    float(iZ)*randomSceneObjectSpacingZ + zShift);
+                float bounceHeight = tls_rng->random01() < 0.2f ? powf(tls_rng->random01(), 3.0f) : 0.0f; // set to 0 to disable bounce / motion blur
+                contents.push_back(new Sphere(
+                    AnimationChannel<float3>({
+                        {0.0f, basePos+float3(0,0,0)},
+                        {1.0f, basePos+float3(0,bounceHeight,0)},
+                    }),
+                    radius,
+                    randomMaterials[ tls_rng->randomU32() % randomMaterialCount ]
+                    ));
+            }
+        }
+    }
+
     Scene scene(contents);
     scene.updateBvh(captureTime, captureTime+camera.exposureSeconds);
 
