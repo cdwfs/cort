@@ -800,6 +800,7 @@ static void usage(const char *argv0)
     printf("-out F    Specify output file [default: out.png]\n");
     printf("          Output file format is determined from the file suffix.\n");
     printf("          Supported formats: PNG, BMP, TGA, HDR\n");
+    printf("-time T   Capture the scene at T seconds [default: 0.0]\n");
     printf("-preview  Render a low-quality preview, to quickly verify scene composition.\n");
 }
 
@@ -815,6 +816,7 @@ int main(int argc, char *argv[])
 
     const char *outputFilename = "out.png";
     unsigned int randomSeed = (unsigned long)std::chrono::high_resolution_clock::now().time_since_epoch().count();
+    float captureTime = 0.0f;
     for(int iArg=1; iArg<argc; ++iArg)
     {
         if (0 == strncmp(argv[iArg], "--help", 7) ||
@@ -831,6 +833,11 @@ int main(int argc, char *argv[])
         else if (0 == strncmp(argv[iArg], "-out", 5) && iArg+1 < argc)
         {
             outputFilename = argv[++iArg];
+            continue;
+        }
+        else if (0 == strncmp(argv[iArg], "-time", 6) && iArg+1 < argc)
+        {
+            captureTime = (float)strtod(argv[++iArg], NULL);
             continue;
         }
         else if (0 == strncmp(argv[iArg], "-preview", 9))
@@ -852,7 +859,6 @@ int main(int argc, char *argv[])
     cameraParams.focusDistance = length(cameraParams.target-cameraParams.eyePos);
     cameraParams.exposureSeconds = 1.0f / 30.0f;
     Camera camera(cameraParams);
-    const float captureTime = 0.5f; // what time should the Camera's virtual shutter open?
 
     std::vector<Hittee*> contents;
     {
