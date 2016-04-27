@@ -30,6 +30,7 @@ extern "C"
 #   else
 #       error Unsupported platform (non-POSIX Unix)
 #   endif
+#   include <time.h>
 #else
 #   error Unsupported platform
 #endif
@@ -50,7 +51,7 @@ extern "C"
 #   if defined(ZOMBO_COMPILER_MSVC)
 #       define ZOMBO_INLINE __forceinline
 #   else
-#       define ZOMBO_INLINE __attribute__((always_inline))
+#       define ZOMBO_INLINE inline
 #   endif
 #endif
 
@@ -70,7 +71,7 @@ extern "C"
 #   define ZOMBO_DEBUGBREAK() __debugbreak()
 #elif defined(ZOMBO_COMPILER_GNU) || defined(ZOMBO_COMPILER_CLANG)
 #   if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 199409L
-#       define ZOMBO_DEBUGBREAK() asm("int $3")
+#       define ZOMBO_DEBUGBREAK() __asm__("int $3")
 #   else
 #       define ZOMBO_DEBUGBREAK() assert(0)
 #   endif
@@ -221,7 +222,7 @@ ZOMBO_DEF ZOMBO_INLINE uint64_t zomboClockTicks(void)
     mach_port_deallocate(mach_task_self(), cclock);
     return (uint64_t)mts.tv_nsec + (uint64_t)mts.tv_sec*1000000000ULL;
 #elif defined(ZOMBO_PLATFORM_POSIX)
-#   if defined(_POSIX_TIMERS)
+#   if defined(_POSIX_TIMERS) && (_POSIX_TIMERS > 0)
     struct timespec ts;
     clock_gettime(1, &ts);
     return (uint64_t)ts.tv_nsec + (uint64_t)ts.tv_sec*1000000000ULL;
@@ -277,7 +278,8 @@ ZOMBO_DEF ZOMBO_INLINE void zomboSleepMsec(uint32_t msec)
 #if   defined(ZOMBO_PLATFORM_WINDOWS)
     Sleep(msec);
 #elif defined(ZOMBO_PLATFORM_APPLE) || defined(ZOMBO_PLATFORM_POSIX)
-    usleep(msec*1000);
+    struct timespec ts = {0, msec*1000};
+    nanosleep(&ts, NULL);
 #else
 #   error Unsupported compiler
 #endif
